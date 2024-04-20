@@ -43,3 +43,8 @@ jobs:
       run: ant build
     - name: Generate Casandra tarball
       run: ant artifacts
+    - name: Create release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "build/apache-cassandra-*.tar.gz"
+        artifactErrorsFailBuild: true
