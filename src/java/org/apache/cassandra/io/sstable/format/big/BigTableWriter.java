@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import com.google.common.collect.ImmutableSet;
@@ -54,6 +55,7 @@ import org.apache.cassandra.io.util.FileHandle;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.MmappedRegionsCache;
 import org.apache.cassandra.io.util.SequentialWriter;
+import org.apache.cassandra.metrics.TableMetrics;
 import org.apache.cassandra.service.CacheService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.EstimatedHistogram;
@@ -245,10 +247,12 @@ public class BigTableWriter extends SortedTableWriter<BigFormatPartitionWriter, 
         private DataPosition mark;
         private DecoratedKey first;
         private DecoratedKey last;
+        private final TableMetrics tableMetrics;
 
-        protected IndexWriter(Builder b, SequentialWriter dataWriter)
+        protected IndexWriter(Builder b, SequentialWriter dataWriter, final TableMetrics tableMetrics)
         {
             super(b);
+            this.tableMetrics = tableMetrics;
             this.rowIndexEntrySerializer = b.getRowIndexEntrySerializer();
             writer = new SequentialWriter(b.descriptor.fileFor(Components.PRIMARY_INDEX), b.getIOOptions().writerOptions);
             builder = IndexComponent.fileBuilder(Components.PRIMARY_INDEX, b).withMmappedRegionsCache(b.getMmappedRegionsCache());
@@ -275,7 +279,13 @@ public class BigTableWriter extends SortedTableWriter<BigFormatPartitionWriter, 
             try
             {
                 ByteBufferUtil.writeWithShortLength(key.getKey(), writer);
+                final long serializerStart = System.nanoTime();
                 rowIndexEntrySerializer.serialize(indexEntry, writer, indexInfo);
+                final long serializerEnd = System.nanoTime();
+                this.tableMetrics.indexSerializerRate.update(
+                    serializerEnd - serializerStart,
+                    TimeUnit.NANOSECONDS
+                );
             }
             catch (IOException e)
             {
@@ -384,7 +394,7 @@ public class BigTableWriter extends SortedTableWriter<BigFormatPartitionWriter, 
         }
 
         @Override
-        protected SequentialWriter openDataWriter()
+        protected SequentialWriter openDataWriter(final TableMetrics tableMetrics)
         {
             checkState(!dataWriterOpened, "Data writer has been already opened.");
 
@@ -393,24 +403,25 @@ public class BigTableWriter extends SortedTableWriter<BigFormatPartitionWriter, 
                                                                     getIOOptions().writerOptions,
                                                                     getMetadataCollector(),
                                                                     ensuringInBuildInternalContext(operationType),
-                                                                    getIOOptions().flushCompression);
+                                                                    getIOOptions().flushCompression,
+                                                                    tableMetrics);
             this.dataWriterOpened = true;
             return dataWriter;
         }
 
         @Override
-        protected IndexWriter openIndexWriter(SequentialWriter dataWriter)
+        protected IndexWriter openIndexWriter(SequentialWriter dataWriter, final TableMetrics tableMetrics)
         {
             checkNotNull(dataWriter);
             checkState(!indexWriterOpened, "Index writer has been already opened.");
 
-            IndexWriter indexWriter = new IndexWriter(this, dataWriter);
+            IndexWriter indexWriter = new IndexWriter(this, dataWriter, tableMetrics);
             this.indexWriterOpened = true;
             return indexWriter;
         }
 
         @Override
-        protected BigFormatPartitionWriter openPartitionWriter(SequentialWriter dataWriter, IndexWriter indexWriter)
+        protected BigFormatPartitionWriter openPartitionWriter(SequentialWriter dataWriter, IndexWriter indexWriter, final TableMetrics tableMetrics)
         {
             checkNotNull(dataWriter);
             checkNotNull(indexWriter);

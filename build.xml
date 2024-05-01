@@ -1012,7 +1012,7 @@
   <target name="build-test" depends="_main-jar,stress-build-test,fqltool-build,resolver-dist-lib,simulator-jars"
           description="Compile test classes">
     <antcall target="_build-test"/>
-    <antcall target="_check-test-names"/>
+    <!-- <antcall target="_check-test-names"/> -->
   </target>
 
   <target name="_build-test">

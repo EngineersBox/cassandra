@@ -28,6 +28,7 @@ import org.apache.cassandra.io.sstable.format.SortedTablePartitionWriter;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.sstable.format.bti.RowIndexReader.IndexInfo;
 import org.apache.cassandra.io.util.SequentialWriter;
+import org.apache.cassandra.metrics.TableMetrics;
 
 /**
  * Partition writer used by {@link BtiTableWriter}.
@@ -47,9 +48,10 @@ class BtiFormatPartitionWriter extends SortedTablePartitionWriter
                              ClusteringComparator comparator,
                              SequentialWriter dataWriter,
                              SequentialWriter rowIndexWriter,
-                             Version version)
+                             Version version,
+                             final TableMetrics tableMetrics)
     {
-        this(header, comparator, dataWriter, rowIndexWriter, version, DatabaseDescriptor.getColumnIndexSize(DEFAULT_GRANULARITY));
+        this(header, comparator, dataWriter, rowIndexWriter, version, DatabaseDescriptor.getColumnIndexSize(DEFAULT_GRANULARITY), tableMetrics);
     }
 
 
@@ -58,9 +60,10 @@ class BtiFormatPartitionWriter extends SortedTablePartitionWriter
                              SequentialWriter dataWriter,
                              SequentialWriter rowIndexWriter,
                              Version version,
-                             int rowIndexBlockSize)
+                             int rowIndexBlockSize,
+                             final TableMetrics tableMetrics)
     {
-        super(header, dataWriter, version);
+        super(header, dataWriter, version, tableMetrics);
         this.rowIndexBlockSize = rowIndexBlockSize;
         this.rowTrie = new RowIndexWriter(comparator, rowIndexWriter, version);
     }

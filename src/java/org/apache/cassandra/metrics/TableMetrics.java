@@ -280,6 +280,10 @@ public class TableMetrics
     public final TableMeter tooManySSTableIndexesReadWarnings;
     public final TableMeter tooManySSTableIndexesReadAborts;
 
+    public final SerializerMetrics indexSerializerRate;
+    public final SerializerMetrics dataSerializerRate;
+    public final SerializerMetrics partitionSerializerRate;
+
     public final ImmutableMap<SSTableFormat<?, ?>, ImmutableMap<String, Gauge<? extends Number>>> formatSpecificGauges;
 
     private static Pair<Long, Long> totalNonSystemTablesSize(Predicate<SSTableReader> predicate)
@@ -862,6 +866,10 @@ public class TableMetrics
         tooManySSTableIndexesReadAborts = createTableMeter("TooManySSTableIndexesReadAborts", cfs.keyspace.metric.tooManySSTableIndexesReadAborts);
 
         formatSpecificGauges = createFormatSpecificGauges(cfs);
+
+        this.dataSerializerRate = createTableSerializerMetrics("Data");
+        this.indexSerializerRate = createTableSerializerMetrics("Index");
+        this.partitionSerializerRate = createTableSerializerMetrics("Partition");
     }
 
     private Memtable.MemoryUsage getMemoryUsageWithIndexes(ColumnFamilyStore cfs)
@@ -908,6 +916,12 @@ public class TableMetrics
             builder.put(format, gauges.build());
         }
         return builder.build();
+    }
+
+    protected SerializerMetrics createTableSerializerMetrics(final String name) {
+        final SerializerMetrics serializerMetrics = new SerializerMetrics(GLOBAL_FACTORY, name);
+        this.all.add(serializerMetrics::release);
+        return serializerMetrics;
     }
 
     /**

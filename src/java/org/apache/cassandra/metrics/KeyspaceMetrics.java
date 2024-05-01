@@ -71,6 +71,7 @@ public class KeyspaceMetrics
     public final Gauge<Long> uncompressedLiveDiskSpaceUsed;
     /** Uncompressed/logical size of SSTables belonging to tables in this keyspace, scaled down by replication factor */
     public final Gauge<Long> unreplicatedUncompressedLiveDiskSpaceUsed;
+    public final Timer sstableSerializerRate;
     public final Gauge<Long> totalDiskSpaceUsed;
     /** Off heap memory used by compression meta data*/
     public final Gauge<Long> compressionMetadataOffHeapMemoryUsed;
@@ -219,7 +220,7 @@ public class KeyspaceMetrics
         unreplicatedUncompressedLiveDiskSpaceUsed = createKeyspaceGauge("UnreplicatedUncompressedLiveDiskSpaceUsed",
                                                                         metric -> metric.uncompressedLiveDiskSpaceUsed.getCount() / keyspace.getReplicationStrategy().getReplicationFactor().fullReplicas);
         totalDiskSpaceUsed = createKeyspaceGauge("TotalDiskSpaceUsed", metric -> metric.totalDiskSpaceUsed.getCount());
-
+        this.sstableSerializerRate = createKeyspaceTimer("SSTableSerializerRate");
         compressionMetadataOffHeapMemoryUsed = createKeyspaceGauge("CompressionMetadataOffHeapMemoryUsed",
                 metric -> metric.compressionMetadataOffHeapMemoryUsed.getValue());
 

@@ -18,6 +18,7 @@
 package org.apache.cassandra.db.rows;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 import net.nicoulaj.compilecommand.annotations.Inline;
 import org.apache.cassandra.db.*;
@@ -28,6 +29,7 @@ import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.TrackedDataInputPlus;
+import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.utils.SearchIterator;
@@ -121,39 +123,43 @@ public class UnfilteredSerializer
     @Deprecated(since = "4.0")
     private final static int HAS_SHADOWABLE_DELETION = 0x02; // Whether the row deletion is shadowable. If there is no extended flag (or no row deletion), the deletion is assumed not shadowable.
 
-    public void serialize(Unfiltered unfiltered, SerializationHelper helper, DataOutputPlus out, int version)
+    public void serialize(Unfiltered unfiltered, SerializationHelper helper, DataOutputPlus out, int version,
+                          final SerializerMetrics metrics)
     throws IOException
     {
         assert !helper.header.isForSSTable();
-        serialize(unfiltered, helper, out, 0, version);
+        serialize(unfiltered, helper, out, 0, version, metrics);
     }
 
-    public void serialize(Unfiltered unfiltered, SerializationHelper helper, DataOutputPlus out, long previousUnfilteredSize, int version)
+    public void serialize(Unfiltered unfiltered, SerializationHelper helper, DataOutputPlus out, long previousUnfilteredSize,
+                          int version, final SerializerMetrics metrics)
     throws IOException
     {
         if (unfiltered.kind() == Unfiltered.Kind.RANGE_TOMBSTONE_MARKER)
         {
-            serialize((RangeTombstoneMarker) unfiltered, helper, out, previousUnfilteredSize, version);
+            serialize((RangeTombstoneMarker) unfiltered, helper, out, previousUnfilteredSize, version, metrics);
         }
         else
         {
-            serialize((Row) unfiltered, helper, out, previousUnfilteredSize, version);
+            serialize((Row) unfiltered, helper, out, previousUnfilteredSize, version, metrics);
         }
     }
 
-    public void serializeStaticRow(Row row, SerializationHelper helper, DataOutputPlus out, int version)
+    public void serializeStaticRow(Row row, SerializationHelper helper, DataOutputPlus out, int version,
+                                   final SerializerMetrics metrics)
     throws IOException
     {
         assert row.isStatic();
-        serialize(row, helper, out, 0, version);
+        serialize(row, helper, out, 0, version, metrics);
     }
 
-    private void serialize(Row row, SerializationHelper helper, DataOutputPlus out, long previousUnfilteredSize, int version)
+    private void serialize(Row row, SerializationHelper helper, DataOutputPlus out, long previousUnfilteredSize, int version,
+                           final SerializerMetrics metrics)
     throws IOException
     {
+        final long serializeStart = System.nanoTime();
         int flags = 0;
         int extendedFlags = 0;
-
         boolean isStatic = row.isStatic();
         SerializationHeader header = helper.header;
         LivenessInfo pkLiveness = row.primaryKeyLivenessInfo();
@@ -188,13 +194,13 @@ public class UnfilteredSerializer
             out.writeByte((byte)extendedFlags);
 
         if (!isStatic)
-            Clustering.serializer.serialize(row.clustering(), out, version, header.clusteringTypes());
+            Clustering.serializer.serialize(row.clustering(), out, version, header.clusteringTypes(), metrics);
 
         if (header.isForSSTable())
         {
             try (DataOutputBuffer dob = DataOutputBuffer.scratchBuffer.get())
             {
-                serializeRowBody(row, flags, helper, dob);
+                serializeRowBody(row, flags, helper, dob, metrics);
 
                 out.writeUnsignedVInt(dob.position() + TypeSizes.sizeofUnsignedVInt(previousUnfilteredSize));
                 // We write the size of the previous unfiltered to make reverse queries more efficient (and simpler).
@@ -205,14 +211,21 @@ public class UnfilteredSerializer
         }
         else
         {
-            serializeRowBody(row, flags, helper, out);
+            serializeRowBody(row, flags, helper, out, metrics);
         }
+        final long serializeEnd = System.nanoTime();
+        metrics.update(
+            SerializerMetrics.SerializerType.ROW,
+            serializeEnd - serializeStart,
+            TimeUnit.NANOSECONDS
+        );
     }
 
     @Inline
-    private void serializeRowBody(Row row, int flags, SerializationHelper helper, DataOutputPlus out)
+    private void serializeRowBody(Row row, int flags, SerializationHelper helper, DataOutputPlus out, final SerializerMetrics metrics)
     throws IOException
     {
+        final long serializeStart = System.nanoTime();
         boolean isStatic = row.isStatic();
 
         SerializationHeader header = helper.header;
@@ -231,7 +244,7 @@ public class UnfilteredSerializer
             header.writeDeletionTime(deletion.time(), out);
 
         if ((flags & HAS_ALL_COLUMNS) == 0)
-            Columns.serializer.serializeSubset(row.columns(), headerColumns, out);
+            Columns.serializer.serializeSubset(row.columns(), headerColumns, out); // TODO: Metrics
 
         SearchIterator<ColumnMetadata, ColumnMetadata> si = helper.iterator(isStatic);
 
@@ -245,17 +258,25 @@ public class UnfilteredSerializer
                 // happens if we don't do that.
                 ColumnMetadata column = si.next(cd.column());
                 assert column != null : cd.column.toString();
-
+                final long columnSerializeStart = System.nanoTime();
                 try
                 {
-                    if (cd.column.isSimple())
-                        Cell.serializer.serialize((Cell<?>) cd, column, out, pkLiveness, header);
-                    else
-                        writeComplexColumn((ComplexColumnData) cd, column, (flags & HAS_COMPLEX_DELETION) != 0, pkLiveness, header, out);
+                    if (cd.column.isSimple()) {
+                        Cell.serializer.serialize((Cell<?>) cd, column, out, pkLiveness, header, metrics);
+                    } else {
+                        writeComplexColumn((ComplexColumnData) cd, column, (flags & HAS_COMPLEX_DELETION) != 0, pkLiveness, header, out, metrics);
+                    }
                 }
                 catch (IOException e)
                 {
                     throw new WrappedException(e);
+                } finally {
+                    final long columnSerializeEnd = System.nanoTime();
+                    metrics.update(
+                        SerializerMetrics.SerializerType.COLUMN,
+                        columnSerializeEnd - columnSerializeStart,
+                        TimeUnit.NANOSECONDS
+                    );
                 }
             });
         }
@@ -265,10 +286,18 @@ public class UnfilteredSerializer
                 throw (IOException) e.getCause();
 
             throw e;
+        } finally {
+            final long serializeEnd = System.nanoTime();
+            metrics.update(
+                SerializerMetrics.SerializerType.ROW_BODY,
+                serializeEnd - serializeStart,
+                TimeUnit.NANOSECONDS
+            );
         }
     }
 
-    private void writeComplexColumn(ComplexColumnData data, ColumnMetadata column, boolean hasComplexDeletion, LivenessInfo rowLiveness, SerializationHeader header, DataOutputPlus out)
+    private void writeComplexColumn(ComplexColumnData data, ColumnMetadata column, boolean hasComplexDeletion, LivenessInfo rowLiveness, SerializationHeader header, DataOutputPlus out,
+                                    final SerializerMetrics metrics)
     throws IOException
     {
         if (hasComplexDeletion)
@@ -276,15 +305,17 @@ public class UnfilteredSerializer
 
         out.writeUnsignedVInt32(data.cellsCount());
         for (Cell<?> cell : data)
-            Cell.serializer.serialize(cell, column, out, rowLiveness, header);
+            Cell.serializer.serialize(cell, column, out, rowLiveness, header, metrics);
     }
 
-    private void serialize(RangeTombstoneMarker marker, SerializationHelper helper, DataOutputPlus out, long previousUnfilteredSize, int version)
+    private void serialize(RangeTombstoneMarker marker, SerializationHelper helper, DataOutputPlus out, long previousUnfilteredSize,
+                           int version, final SerializerMetrics metrics)
     throws IOException
     {
+        final long serializeStart = System.nanoTime();
         SerializationHeader header = helper.header;
         out.writeByte((byte)IS_MARKER);
-        ClusteringBoundOrBoundary.serializer.serialize(marker.clustering(), out, version, header.clusteringTypes());
+        ClusteringBoundOrBoundary.serializer.serialize(marker.clustering(), out, version, header.clusteringTypes()); // TODO: Metrics
 
         if (header.isForSSTable())
         {
@@ -302,6 +333,12 @@ public class UnfilteredSerializer
         {
             header.writeDeletionTime(((RangeTombstoneBoundMarker)marker).deletionTime(), out);
         }
+        final long serializeEnd = System.nanoTime();
+        metrics.update(
+            SerializerMetrics.SerializerType.RANGE_TOMBSTONE_MARKER,
+            serializeEnd - serializeStart,
+            TimeUnit.NANOSECONDS
+        );
     }
 
     public long serializedSize(Unfiltered unfiltered, SerializationHelper helper, int version)

@@ -1295,6 +1295,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
                 try
                 {
                     // flush the memtable
+                    final long flushStart = System.nanoTime();
                     flushRunnables = Flushing.flushRunnables(cfs, memtable, txn);
                     ExecutorPlus[] executors = perDiskflushExecutors.getExecutorsFor(getKeyspaceName(), name);
 
@@ -1311,6 +1312,11 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
                         indexManager.flushAllNonCFSBackedIndexesBlocking(memtable);
 
                     flushResults = Lists.newArrayList(FBUtilities.waitOnFutures(futures));
+                    final long flushEnd = System.nanoTime();
+                    cfs.metric.sstableSerializerRate.update(
+                        flushEnd - flushStart,
+                        TimeUnit.NANOSECONDS
+                    );
                 }
                 catch (Throwable t)
                 {

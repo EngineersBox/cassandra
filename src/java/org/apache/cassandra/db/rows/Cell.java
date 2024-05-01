@@ -20,6 +20,7 @@ package org.apache.cassandra.db.rows;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Comparator;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.DeletionPurger;
@@ -28,6 +29,7 @@ import org.apache.cassandra.db.SerializationHeader;
 import org.apache.cassandra.db.marshal.ValueAccessor;
 import org.apache.cassandra.io.util.DataInputPlus;
 import org.apache.cassandra.io.util.DataOutputPlus;
+import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.utils.CassandraUInt;
@@ -265,8 +267,10 @@ public abstract class Cell<V> extends ColumnData
         private final static int USE_ROW_TIMESTAMP_MASK      = 0x08; // Wether the cell has the same timestamp than the row this is a cell of.
         private final static int USE_ROW_TTL_MASK            = 0x10; // Wether the cell has the same ttl than the row this is a cell of.
 
-        public <T> void serialize(Cell<T> cell, ColumnMetadata column, DataOutputPlus out, LivenessInfo rowLiveness, SerializationHeader header) throws IOException
+        public <T> void serialize(Cell<T> cell, ColumnMetadata column, DataOutputPlus out, LivenessInfo rowLiveness, SerializationHeader header,
+                                  final SerializerMetrics metrics) throws IOException
         {
+            final long serializeStart = System.nanoTime();
             assert cell != null;
             boolean hasValue = cell.valueSize() > 0;
             boolean isDeleted = cell.isTombstone();
@@ -302,6 +306,12 @@ public abstract class Cell<V> extends ColumnData
 
             if (hasValue)
                 header.getType(column).writeValue(cell.value(), cell.accessor(), out);
+            final long serializeEnd = System.nanoTime();
+            metrics.update(
+                SerializerMetrics.SerializerType.CELL,
+                serializeEnd - serializeStart,
+                TimeUnit.NANOSECONDS
+            );
         }
 
         public <V> Cell<V> deserialize(DataInputPlus in, LivenessInfo rowLiveness, ColumnMetadata column, SerializationHeader header, DeserializationHelper helper, ValueAccessor<V> accessor) throws IOException

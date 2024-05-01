@@ -19,6 +19,7 @@ package org.apache.cassandra.io.sstable.format.bti;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -47,6 +48,7 @@ import org.apache.cassandra.io.util.DataPosition;
 import org.apache.cassandra.io.util.FileHandle;
 import org.apache.cassandra.io.util.MmappedRegionsCache;
 import org.apache.cassandra.io.util.SequentialWriter;
+import org.apache.cassandra.metrics.TableMetrics;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.Clock;
 import org.apache.cassandra.utils.IFilter;
@@ -64,10 +66,12 @@ import static org.apache.cassandra.io.util.FileHandle.Builder.NO_LENGTH_OVERRIDE
 public class BtiTableWriter extends SortedTableWriter<BtiFormatPartitionWriter, BtiTableWriter.IndexWriter>
 {
     private static final Logger logger = LoggerFactory.getLogger(BtiTableWriter.class);
+    private final TableMetrics tableMetrics;
 
     public BtiTableWriter(Builder builder, LifecycleNewTracker lifecycleNewTracker, SSTable.Owner owner)
     {
         super(builder, lifecycleNewTracker, owner);
+        this.tableMetrics = owner.getMetrics();
     }
 
     @Override
@@ -77,6 +81,7 @@ public class BtiTableWriter extends SortedTableWriter<BtiFormatPartitionWriter, 
                                                      finishResult,
                                                      partitionLevelDeletion,
                                                      partitionWriter.getRowIndexBlockCount());
+
         indexWriter.append(key, entry);
         return entry;
     }
@@ -167,10 +172,12 @@ public class BtiTableWriter extends SortedTableWriter<BtiFormatPartitionWriter, 
         boolean partitionIndexCompleted = false;
         private DataPosition riMark;
         private DataPosition piMark;
+        private final TableMetrics tableMetrics;
 
-        IndexWriter(Builder b, SequentialWriter dataWriter)
+        IndexWriter(Builder b, SequentialWriter dataWriter, final TableMetrics tableMetrics)
         {
             super(b);
+            this.tableMetrics = tableMetrics;
             rowIndexWriter = new SequentialWriter(descriptor.fileFor(Components.ROW_INDEX), b.getIOOptions().writerOptions);
             rowIndexFHBuilder = IndexComponent.fileBuilder(Components.ROW_INDEX, b).withMmappedRegionsCache(b.getMmappedRegionsCache());
             partitionIndexWriter = new SequentialWriter(descriptor.fileFor(Components.PARTITION_INDEX), b.getIOOptions().writerOptions);
@@ -192,7 +199,13 @@ public class BtiTableWriter extends SortedTableWriter<BtiFormatPartitionWriter, 
                 try
                 {
                     ByteBufferUtil.writeWithShortLength(key.getKey(), rowIndexWriter);
+                    final long serializeStart = System.nanoTime();
                     ((TrieIndexEntry) indexEntry).serialize(rowIndexWriter, rowIndexWriter.position(), descriptor.version);
+                    final long serializeEnd = System.nanoTime();
+                    this.tableMetrics.indexSerializerRate.update(
+                        serializeEnd - serializeStart,
+                        TimeUnit.NANOSECONDS
+                    );
                 }
                 catch (IOException e)
                 {
@@ -325,7 +338,7 @@ public class BtiTableWriter extends SortedTableWriter<BtiFormatPartitionWriter, 
         }
 
         @Override
-        protected SequentialWriter openDataWriter()
+        protected SequentialWriter openDataWriter(final TableMetrics tableMetrics)
         {
             checkState(!dataWriterOpened, "Data writer has been already opened.");
 
@@ -334,22 +347,23 @@ public class BtiTableWriter extends SortedTableWriter<BtiFormatPartitionWriter, 
                                              getIOOptions().writerOptions,
                                              getMetadataCollector(),
                                              ensuringInBuildInternalContext(operationType),
-                                             getIOOptions().flushCompression);
+                                             getIOOptions().flushCompression,
+                                             tableMetrics);
         }
 
         @Override
-        protected IndexWriter openIndexWriter(SequentialWriter dataWriter)
+        protected IndexWriter openIndexWriter(SequentialWriter dataWriter, final TableMetrics tableMetrics)
         {
             checkNotNull(dataWriter);
             checkState(!indexWriterOpened, "Index writer has been already opened.");
 
-            IndexWriter indexWriter = new IndexWriter(this, dataWriter);
+            IndexWriter indexWriter = new IndexWriter(this, dataWriter, tableMetrics);
             indexWriterOpened = true;
             return indexWriter;
         }
 
         @Override
-        protected BtiFormatPartitionWriter openPartitionWriter(SequentialWriter dataWriter, IndexWriter indexWriter)
+        protected BtiFormatPartitionWriter openPartitionWriter(SequentialWriter dataWriter, IndexWriter indexWriter, final TableMetrics tableMetrics)
         {
             checkNotNull(dataWriter);
             checkNotNull(indexWriter);
@@ -359,7 +373,8 @@ public class BtiTableWriter extends SortedTableWriter<BtiFormatPartitionWriter, 
                                                                                     getTableMetadataRef().getLocal().comparator,
                                                                                     dataWriter,
                                                                                     indexWriter.rowIndexWriter,
-                                                                                    descriptor.version);
+                                                                                    descriptor.version,
+                                                                                    tableMetrics);
             partitionWriterOpened = true;
             return partitionWriter;
         }

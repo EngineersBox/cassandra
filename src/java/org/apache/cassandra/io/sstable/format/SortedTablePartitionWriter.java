@@ -30,6 +30,7 @@ import org.apache.cassandra.db.rows.SerializationHelper;
 import org.apache.cassandra.db.rows.Unfiltered;
 import org.apache.cassandra.db.rows.UnfilteredSerializer;
 import org.apache.cassandra.io.util.SequentialWriter;
+import org.apache.cassandra.metrics.TableMetrics;
 import org.apache.cassandra.utils.ByteBufferUtil;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -56,6 +57,8 @@ public abstract class SortedTablePartitionWriter implements AutoCloseable
     protected DeletionTime openMarker = DeletionTime.LIVE;
     protected DeletionTime startOpenMarker = DeletionTime.LIVE;
 
+    protected TableMetrics tableMetrics;
+
     // Sequence control, also used to add empty static row if `addStaticRow` is not called.
     private enum State
     {
@@ -67,13 +70,17 @@ public abstract class SortedTablePartitionWriter implements AutoCloseable
 
     State state = State.AWAITING_PARTITION_HEADER;
 
-    protected SortedTablePartitionWriter(SerializationHeader header, SequentialWriter writer, Version version)
+    protected SortedTablePartitionWriter(SerializationHeader header,
+                                         SequentialWriter writer,
+                                         Version version,
+                                         final TableMetrics tableMetrics)
     {
         this.header = header;
         this.writer = writer;
         this.unfilteredSerializer = UnfilteredSerializer.serializer;
         this.helper = new SerializationHelper(header);
         this.version = version;
+        this.tableMetrics = tableMetrics;
     }
 
     protected void reset()

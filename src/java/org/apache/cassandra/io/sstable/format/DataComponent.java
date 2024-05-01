@@ -28,6 +28,7 @@ import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.io.util.ChecksummedSequentialWriter;
 import org.apache.cassandra.io.util.SequentialWriter;
 import org.apache.cassandra.io.util.SequentialWriterOption;
+import org.apache.cassandra.metrics.TableMetrics;
 import org.apache.cassandra.schema.CompressionParams;
 import org.apache.cassandra.schema.TableMetadata;
 
@@ -38,7 +39,8 @@ public class DataComponent
                                                SequentialWriterOption options,
                                                MetadataCollector metadataCollector,
                                                OperationType operationType,
-                                               FlushCompression flushCompression)
+                                               FlushCompression flushCompression,
+                                               final TableMetrics tableMetrics)
     {
         if (metadata.params.compression.isEnabled())
         {

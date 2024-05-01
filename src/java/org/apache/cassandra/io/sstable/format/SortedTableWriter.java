@@ -59,6 +59,7 @@ import org.apache.cassandra.io.sstable.metadata.StatsMetadata;
 import org.apache.cassandra.io.util.DataPosition;
 import org.apache.cassandra.io.util.FileHandle;
 import org.apache.cassandra.io.util.SequentialWriter;
+import org.apache.cassandra.metrics.TableMetrics;
 import org.apache.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.schema.SchemaConstants;
 import org.apache.cassandra.schema.TableMetadataRef;
@@ -87,11 +88,12 @@ public abstract class SortedTableWriter<P extends SortedTablePartitionWriter, I 
     private DataPosition dataMark;
     private long lastEarlyOpenLength;
     private final Supplier<Double> crcCheckChanceSupplier;
+    private final TableMetrics tableMetrics;
 
     public SortedTableWriter(Builder<P, I, ?, ?> builder, LifecycleNewTracker lifecycleNewTracker, SSTable.Owner owner)
     {
         super(builder, lifecycleNewTracker, owner);
-
+        this.tableMetrics = owner.getMetrics();
         TableMetadataRef ref = builder.getTableMetadataRef();
         crcCheckChanceSupplier = () -> ref.getLocal().params.crcCheckChance;
         SequentialWriter dataWriter = null;
@@ -99,13 +101,13 @@ public abstract class SortedTableWriter<P extends SortedTablePartitionWriter, I 
         P partitionWriter = null;
         try
         {
-            dataWriter = builder.openDataWriter();
+            dataWriter = builder.openDataWriter(this.tableMetrics);
             checkNotNull(dataWriter);
 
-            indexWriter = builder.openIndexWriter(dataWriter);
+            indexWriter = builder.openIndexWriter(dataWriter, this.tableMetrics);
             checkNotNull(indexWriter);
 
-            partitionWriter = builder.openPartitionWriter(dataWriter, indexWriter);
+            partitionWriter = builder.openPartitionWriter(dataWriter, indexWriter, this.tableMetrics);
             checkNotNull(partitionWriter);
 
             this.dataWriter = dataWriter;
@@ -506,10 +508,10 @@ public abstract class SortedTableWriter<P extends SortedTablePartitionWriter, I 
             return (B) this;
         }
 
-        protected abstract SequentialWriter openDataWriter();
+        protected abstract SequentialWriter openDataWriter(final TableMetrics tableMetrics);
 
-        protected abstract I openIndexWriter(SequentialWriter dataWriter);
+        protected abstract I openIndexWriter(SequentialWriter dataWriter, final TableMetrics tableMetrics);
 
-        protected abstract P openPartitionWriter(SequentialWriter dataWriter, I indexWriter);
+        protected abstract P openPartitionWriter(SequentialWriter dataWriter, I indexWriter, final TableMetrics tableMetrics);
     }
 }

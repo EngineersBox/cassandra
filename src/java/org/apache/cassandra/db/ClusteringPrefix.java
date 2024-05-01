@@ -20,6 +20,7 @@ package org.apache.cassandra.db;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.ToIntFunction;
 
 import org.apache.cassandra.cache.IMeasurableMemory;
@@ -33,6 +34,7 @@ import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.io.util.DataInputPlus;
 import org.apache.cassandra.io.util.DataOutputPlus;
+import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.schema.TableMetadata;
 import org.apache.cassandra.utils.ByteArrayUtil;
 import org.apache.cassandra.utils.FBUtilities;
@@ -452,8 +454,10 @@ public interface ClusteringPrefix<V> extends IMeasurableMemory, Clusterable<V>
                 return ClusteringBoundOrBoundary.serializer.serializedSize((ClusteringBoundOrBoundary<?>)clustering, version, types);
         }
 
-        <V> void serializeValuesWithoutSize(ClusteringPrefix<V> clustering, DataOutputPlus out, int version, List<AbstractType<?>> types) throws IOException
+        <V> void serializeValuesWithoutSize(ClusteringPrefix<V> clustering, DataOutputPlus out, int version, List<AbstractType<?>> types,
+                                            final SerializerMetrics metrics) throws IOException
         {
+            final long serializeStart = System.nanoTime();
             int offset = 0;
             int clusteringSize = clustering.size();
             ValueAccessor<V> accessor = clustering.accessor();
@@ -474,6 +478,12 @@ public interface ClusteringPrefix<V> extends IMeasurableMemory, Clusterable<V>
                     offset++;
                 }
             }
+            final long serializeEnd = System.nanoTime();
+            metrics.update(
+                SerializerMetrics.SerializerType.CLUSTERING_KEY,
+                serializeEnd - serializeStart,
+                TimeUnit.NANOSECONDS
+            );
         }
 
         <V> long valuesWithoutSizeSerializedSize(ClusteringPrefix<V> clustering, int version, List<AbstractType<?>> types)
