@@ -1034,7 +1034,7 @@ public class AbstractTypeTest
 
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version);
+            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, null);
             try (DataInputBuffer in = new DataInputBuffer(out.getData()))
             {
                 Row.Builder builder = BTreeRow.sortedBuilder();
@@ -1070,7 +1070,7 @@ public class AbstractTypeTest
         Row rightRow = Rows.simpleBuilder(rightTable).noPrimaryKeyLivenessInfo().add(rightColumn.name.toString(), v).build();
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version);
+            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, null);
             try (DataInputBuffer in = new DataInputBuffer(out.getData()))
             {
                 Row.Builder builder = BTreeRow.sortedBuilder();
@@ -1095,7 +1095,7 @@ public class AbstractTypeTest
         Row rightRow = Rows.simpleBuilder(rightTable).noPrimaryKeyLivenessInfo().add(rightColumn.name.toString(), v).build();
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version);
+            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, null);
             try (DataInputBuffer in = new DataInputBuffer(out.getData()))
             {
                 Row.Builder builder = BTreeRow.sortedBuilder();

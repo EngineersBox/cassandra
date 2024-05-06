@@ -91,7 +91,7 @@ public class UnfilteredSerializerTest
 
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(writtenRow, new SerializationHelper(SerializationHeader.makeWithoutStats(md)), out, 0, MessagingService.current_version);
+            UnfilteredSerializer.serializer.serialize(writtenRow, new SerializationHelper(SerializationHeader.makeWithoutStats(md)), out, 0, MessagingService.current_version, null);
             out.flush();
             try (DataInputBuffer in = new DataInputBuffer(transform.apply(out.asNewBuffer()), false))
             {
