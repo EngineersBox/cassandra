@@ -59,6 +59,7 @@ import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.metrics.TableMetrics;
 import org.apache.cassandra.service.CacheService;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.utils.Clock;
 import org.apache.cassandra.utils.EstimatedHistogram;
 import org.apache.cassandra.utils.IFilter;
 import org.apache.cassandra.utils.JVMStabilityInspector;
@@ -280,9 +281,9 @@ public class BigTableWriter extends SortedTableWriter<BigFormatPartitionWriter, 
             try
             {
                 ByteBufferUtil.writeWithShortLength(key.getKey(), writer);
-                final long serializerStart = System.nanoTime();
+                final long serializerStart = Clock.Global.nanoTime();
                 rowIndexEntrySerializer.serialize(indexEntry, writer, indexInfo);
-                final long serializerEnd = System.nanoTime();
+                final long serializerEnd = Clock.Global.nanoTime();
                 this.tableMetrics.sstableWriterRate.update(
                     SerializerMetrics.SerializerType.INDEX_ENTRY,
                     serializerEnd - serializerStart,

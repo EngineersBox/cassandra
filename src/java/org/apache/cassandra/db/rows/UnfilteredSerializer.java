@@ -32,6 +32,7 @@ import org.apache.cassandra.io.util.TrackedDataInputPlus;
 import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.schema.ColumnMetadata;
+import org.apache.cassandra.utils.Clock;
 import org.apache.cassandra.utils.SearchIterator;
 import org.apache.cassandra.utils.WrappedException;
 
@@ -157,7 +158,7 @@ public class UnfilteredSerializer
                            final SerializerMetrics metrics)
     throws IOException
     {
-        final long serializeStart = System.nanoTime();
+        final long serializeStart = Clock.Global.nanoTime();
         int flags = 0;
         int extendedFlags = 0;
         boolean isStatic = row.isStatic();
@@ -175,7 +176,7 @@ public class UnfilteredSerializer
             flags |= HAS_TIMESTAMP;
         if (pkLiveness.isExpiring())
             flags |= HAS_TTL;
-        if (!deletion.isLive())
+
         {
             flags |= HAS_DELETION;
             if (deletion.isShadowable())
@@ -213,7 +214,7 @@ public class UnfilteredSerializer
         {
             serializeRowBody(row, flags, helper, out, metrics);
         }
-        final long serializeEnd = System.nanoTime();
+        final long serializeEnd = Clock.Global.nanoTime();
         if (metrics != null) {
             metrics.update(
                 SerializerMetrics.SerializerType.ROW,
@@ -227,7 +228,7 @@ public class UnfilteredSerializer
     private void serializeRowBody(Row row, int flags, SerializationHelper helper, DataOutputPlus out, final SerializerMetrics metrics)
     throws IOException
     {
-        final long serializeStart = System.nanoTime();
+        final long serializeStart = Clock.Global.nanoTime();
         boolean isStatic = row.isStatic();
 
         SerializationHeader header = helper.header;
@@ -246,9 +247,9 @@ public class UnfilteredSerializer
             header.writeDeletionTime(deletion.time(), out);
 
         if ((flags & HAS_ALL_COLUMNS) == 0) {
-            final long subsetSerializeStart = System.nanoTime();
+            final long subsetSerializeStart = Clock.Global.nanoTime();
             Columns.serializer.serializeSubset(row.columns(), headerColumns, out);
-            final long subsetSerializeEnd = System.nanoTime();
+            final long subsetSerializeEnd = Clock.Global.nanoTime();
             if (metrics != null) {
                 metrics.update(
                     SerializerMetrics.SerializerType.COLUMN_SUBSET,
@@ -270,7 +271,7 @@ public class UnfilteredSerializer
                 // happens if we don't do that.
                 ColumnMetadata column = si.next(cd.column());
                 assert column != null : cd.column.toString();
-                final long columnSerializeStart = System.nanoTime();
+                final long columnSerializeStart = Clock.Global.nanoTime();
                 try
                 {
                     if (cd.column.isSimple()) {
@@ -283,7 +284,7 @@ public class UnfilteredSerializer
                 {
                     throw new WrappedException(e);
                 } finally {
-                    final long columnSerializeEnd = System.nanoTime();
+                    final long columnSerializeEnd = Clock.Global.nanoTime();
                     if (metrics != null) {
                         metrics.update(
                             SerializerMetrics.SerializerType.COLUMN,
@@ -301,7 +302,7 @@ public class UnfilteredSerializer
 
             throw e;
         } finally {
-            final long serializeEnd = System.nanoTime();
+            final long serializeEnd = Clock.Global.nanoTime();
             if (metrics != null) {
                 metrics.update(
                     SerializerMetrics.SerializerType.ROW_BODY,
@@ -328,7 +329,7 @@ public class UnfilteredSerializer
                            int version, final SerializerMetrics metrics)
     throws IOException
     {
-        final long serializeStart = System.nanoTime();
+        final long serializeStart = Clock.Global.nanoTime();
         SerializationHeader header = helper.header;
         out.writeByte((byte)IS_MARKER);
         ClusteringBoundOrBoundary.serializer.serialize(marker.clustering(), out, version, header.clusteringTypes(), metrics);
@@ -349,7 +350,7 @@ public class UnfilteredSerializer
         {
             header.writeDeletionTime(((RangeTombstoneBoundMarker)marker).deletionTime(), out);
         }
-        final long serializeEnd = System.nanoTime();
+        final long serializeEnd = Clock.Global.nanoTime();
         if (metrics != null) {
             metrics.update(
                 SerializerMetrics.SerializerType.RANGE_TOMBSTONE_MARKER,

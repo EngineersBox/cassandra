@@ -163,6 +163,7 @@ import org.apache.cassandra.service.snapshot.SnapshotManifest;
 import org.apache.cassandra.service.snapshot.TableSnapshot;
 import org.apache.cassandra.streaming.TableStreamManager;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.utils.Clock;
 import org.apache.cassandra.utils.DefaultValue;
 import org.apache.cassandra.utils.ExecutorUtils;
 import org.apache.cassandra.utils.FBUtilities;
@@ -1296,7 +1297,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
                 try
                 {
                     // flush the memtable
-                    final long flushStart = System.nanoTime();
+                    final long flushStart = Clock.Global.nanoTime();
                     flushRunnables = Flushing.flushRunnables(cfs, memtable, txn);
                     ExecutorPlus[] executors = perDiskflushExecutors.getExecutorsFor(getKeyspaceName(), name);
 
@@ -1313,7 +1314,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
                         indexManager.flushAllNonCFSBackedIndexesBlocking(memtable);
 
                     flushResults = Lists.newArrayList(FBUtilities.waitOnFutures(futures));
-                    final long flushEnd = System.nanoTime();
+                    final long flushEnd = Clock.Global.nanoTime();
                     cfs.metric.dataSerializerRate.update(
                         SerializerMetrics.SerializerType.CFS,
                         flushEnd - flushStart,

@@ -33,6 +33,7 @@ import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.utils.CassandraUInt;
+import org.apache.cassandra.utils.Clock;
 import org.apache.cassandra.utils.memory.ByteBufferCloner;
 import org.apache.cassandra.utils.memory.Cloner;
 
@@ -270,7 +271,7 @@ public abstract class Cell<V> extends ColumnData
         public <T> void serialize(Cell<T> cell, ColumnMetadata column, DataOutputPlus out, LivenessInfo rowLiveness, SerializationHeader header,
                                   final SerializerMetrics metrics) throws IOException
         {
-            final long serializeStart = System.nanoTime();
+            final long serializeStart = Clock.Global.nanoTime();
             assert cell != null;
             boolean hasValue = cell.valueSize() > 0;
             boolean isDeleted = cell.isTombstone();
@@ -306,7 +307,7 @@ public abstract class Cell<V> extends ColumnData
 
             if (hasValue)
                 header.getType(column).writeValue(cell.value(), cell.accessor(), out);
-            final long serializeEnd = System.nanoTime();
+            final long serializeEnd = Clock.Global.nanoTime();
             if (metrics != null) {
                 metrics.update(
                         SerializerMetrics.SerializerType.CELL,

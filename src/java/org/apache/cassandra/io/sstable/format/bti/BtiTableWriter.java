@@ -200,9 +200,9 @@ public class BtiTableWriter extends SortedTableWriter<BtiFormatPartitionWriter, 
                 try
                 {
                     ByteBufferUtil.writeWithShortLength(key.getKey(), rowIndexWriter);
-                    final long serializeStart = System.nanoTime();
+                    final long serializeStart = Clock.Global.nanoTime();
                     ((TrieIndexEntry) indexEntry).serialize(rowIndexWriter, rowIndexWriter.position(), descriptor.version);
-                    final long serializeEnd = System.nanoTime();
+                    final long serializeEnd = Clock.Global.nanoTime();
                     this.tableMetrics.sstableWriterRate.update(
                         SerializerMetrics.SerializerType.INDEX_ENTRY,
                         serializeEnd - serializeStart,
