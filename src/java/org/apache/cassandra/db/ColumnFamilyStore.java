@@ -135,6 +135,7 @@ import org.apache.cassandra.io.util.FileOutputStreamPlus;
 import org.apache.cassandra.metrics.Sampler;
 import org.apache.cassandra.metrics.Sampler.Sample;
 import org.apache.cassandra.metrics.Sampler.SamplerType;
+import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.metrics.TableMetrics;
 import org.apache.cassandra.metrics.TopPartitionTracker;
 import org.apache.cassandra.repair.TableRepairManager;
@@ -1313,7 +1314,8 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
 
                     flushResults = Lists.newArrayList(FBUtilities.waitOnFutures(futures));
                     final long flushEnd = System.nanoTime();
-                    cfs.metric.sstableSerializerRate.update(
+                    cfs.metric.dataSerializerRate.update(
+                        SerializerMetrics.SerializerType.CFS,
                         flushEnd - flushStart,
                         TimeUnit.NANOSECONDS
                     );

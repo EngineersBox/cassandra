@@ -294,8 +294,8 @@ public class Slice
     {
         public void serialize(Slice slice, DataOutputPlus out, int version, List<AbstractType<?>> types) throws IOException
         {
-            ClusteringBound.serializer.serialize(slice.start, out, version, types);
-            ClusteringBound.serializer.serialize(slice.end, out, version, types);
+            ClusteringBound.serializer.serialize(slice.start, out, version, types, null);
+            ClusteringBound.serializer.serialize(slice.end, out, version, types, null);
         }
 
         public long serializedSize(Slice slice, int version, List<AbstractType<?>> types)

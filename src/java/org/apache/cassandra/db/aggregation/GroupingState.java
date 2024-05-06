@@ -105,7 +105,7 @@ public final class GroupingState
                 boolean hasClustering = state.hasClustering();
                 out.writeBoolean(hasClustering);
                 if (hasClustering)
-                    Clustering.serializer.serialize(state.clustering, out, version, comparator.subtypes());
+                    Clustering.serializer.serialize(state.clustering, out, version, comparator.subtypes(), null);
             }
         }
 

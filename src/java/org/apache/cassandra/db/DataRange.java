@@ -446,7 +446,7 @@ public class DataRange
             out.writeBoolean(isPaging);
             if (isPaging)
             {
-                Clustering.serializer.serialize(((Paging)range).lastReturned, out, version, metadata.comparator.subtypes());
+                Clustering.serializer.serialize(((Paging)range).lastReturned, out, version, metadata.comparator.subtypes(), null);
                 out.writeBoolean(((Paging)range).inclusive);
             }
         }

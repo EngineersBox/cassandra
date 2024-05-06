@@ -126,7 +126,7 @@ public abstract class SortedTablePartitionWriter implements AutoCloseable
         checkState(state == State.AWAITING_STATIC_ROW);
         checkState(staticRow.isStatic());
 
-        UnfilteredSerializer.serializer.serializeStaticRow(staticRow, helper, writer, version.correspondingMessagingVersion());
+        UnfilteredSerializer.serializer.serializeStaticRow(staticRow, helper, writer, version.correspondingMessagingVersion(), this.tableMetrics.dataSerializerRate);
 
         this.headerLength = writer.position() - initialPosition;
         state = State.AWAITING_ROWS;
@@ -147,7 +147,7 @@ public abstract class SortedTablePartitionWriter implements AutoCloseable
         }
 
         long unfilteredPosition = writer.position();
-        unfilteredSerializer.serialize(unfiltered, helper, writer, pos - previousRowStart, version.correspondingMessagingVersion());
+        unfilteredSerializer.serialize(unfiltered, helper, writer, pos - previousRowStart, version.correspondingMessagingVersion(), this.tableMetrics.dataSerializerRate);
 
         lastClustering = unfiltered.clustering();
         previousRowStart = pos;

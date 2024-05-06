@@ -414,11 +414,11 @@ public interface ClusteringPrefix<V> extends IMeasurableMemory, Clusterable<V>
             if (clustering.kind() == Kind.CLUSTERING)
             {
                 out.writeByte(clustering.kind().ordinal());
-                Clustering.serializer.serialize((Clustering<?>)clustering, out, version, types);
+                Clustering.serializer.serialize((Clustering<?>)clustering, out, version, types, null);
             }
             else
             {
-                ClusteringBoundOrBoundary.serializer.serialize((ClusteringBoundOrBoundary<?>)clustering, out, version, types);
+                ClusteringBoundOrBoundary.serializer.serialize((ClusteringBoundOrBoundary<?>)clustering, out, version, types, null);
             }
         }
 
@@ -479,11 +479,13 @@ public interface ClusteringPrefix<V> extends IMeasurableMemory, Clusterable<V>
                 }
             }
             final long serializeEnd = System.nanoTime();
-            metrics.update(
-                SerializerMetrics.SerializerType.CLUSTERING_KEY,
-                serializeEnd - serializeStart,
-                TimeUnit.NANOSECONDS
-            );
+            if (metrics != null) {
+                metrics.update(
+                    SerializerMetrics.SerializerType.CLUSTERING_KEY,
+                    serializeEnd - serializeStart,
+                    TimeUnit.NANOSECONDS
+                );
+            }
         }
 
         <V> long valuesWithoutSizeSerializedSize(ClusteringPrefix<V> clustering, int version, List<AbstractType<?>> types)

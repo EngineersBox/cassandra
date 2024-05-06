@@ -307,11 +307,13 @@ public abstract class Cell<V> extends ColumnData
             if (hasValue)
                 header.getType(column).writeValue(cell.value(), cell.accessor(), out);
             final long serializeEnd = System.nanoTime();
-            metrics.update(
-                SerializerMetrics.SerializerType.CELL,
-                serializeEnd - serializeStart,
-                TimeUnit.NANOSECONDS
-            );
+            if (metrics != null) {
+                metrics.update(
+                        SerializerMetrics.SerializerType.CELL,
+                        serializeEnd - serializeStart,
+                        TimeUnit.NANOSECONDS
+                );
+            }
         }
 
         public <V> Cell<V> deserialize(DataInputPlus in, LivenessInfo rowLiveness, ColumnMetadata column, SerializationHeader header, DeserializationHelper helper, ValueAccessor<V> accessor) throws IOException

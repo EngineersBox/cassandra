@@ -37,6 +37,7 @@ import org.apache.cassandra.io.sstable.format.SortedTablePartitionWriter;
 import org.apache.cassandra.io.sstable.format.Version;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.io.util.SequentialWriter;
+import org.apache.cassandra.metrics.TableMetrics;
 
 /**
  * Column index builder used by {@link org.apache.cassandra.io.sstable.format.big.BigTableWriter}.
@@ -68,9 +69,10 @@ public class BigFormatPartitionWriter extends SortedTablePartitionWriter
     BigFormatPartitionWriter(SerializationHeader header,
                              SequentialWriter writer,
                              Version version,
-                             ISerializer<IndexInfo> indexInfoSerializer)
+                             ISerializer<IndexInfo> indexInfoSerializer,
+                             final TableMetrics tableMetrics)
     {
-        this(header, writer, version, indexInfoSerializer, DatabaseDescriptor.getColumnIndexCacheSize(), DatabaseDescriptor.getColumnIndexSize(DEFAULT_GRANULARITY));
+        this(header, writer, version, indexInfoSerializer, DatabaseDescriptor.getColumnIndexCacheSize(), DatabaseDescriptor.getColumnIndexSize(DEFAULT_GRANULARITY), tableMetrics);
     }
 
     BigFormatPartitionWriter(SerializationHeader header,
@@ -78,9 +80,10 @@ public class BigFormatPartitionWriter extends SortedTablePartitionWriter
                              Version version,
                              ISerializer<IndexInfo> indexInfoSerializer,
                              int cacheSizeThreshold,
-                             int indexSize)
+                             int indexSize,
+                             final TableMetrics tableMetrics)
     {
-        super(header, writer, version);
+        super(header, writer, version, tableMetrics);
         this.idxSerializer = indexInfoSerializer;
         this.cacheSizeThreshold = cacheSizeThreshold;
         this.indexSize = indexSize;

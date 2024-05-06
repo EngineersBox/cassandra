@@ -502,8 +502,7 @@ public class Columns extends AbstractCollection<ColumnMetadata> implements Colle
          * If both ends have a pre-shared superset of the columns we are serializing, we can send them much
          * more efficiently. Both ends must provide the identically same set of columns.
          */
-        public void serializeSubset(Collection<ColumnMetadata> columns, Columns superset, DataOutputPlus out,
-                                    final SerializerMetrics metrics) throws IOException
+        public void serializeSubset(Collection<ColumnMetadata> columns, Columns superset, DataOutputPlus out) throws IOException
         {
             /**
              * We weight this towards small sets, and sets where the majority of items are present, since
@@ -517,7 +516,6 @@ public class Columns extends AbstractCollection<ColumnMetadata> implements Colle
              * to a vint encoded set of deltas, either adding or subtracting (whichever is most efficient).
              * We indicate this switch by sending our bitmap with every bit set, i.e. -1L
              */
-            final long serializeStart = System.nanoTime();
             int columnCount = columns.size();
             int supersetCount = superset.size();
             if (columnCount == supersetCount)
@@ -532,12 +530,6 @@ public class Columns extends AbstractCollection<ColumnMetadata> implements Colle
             {
                 serializeLargeSubset(columns, columnCount, superset, supersetCount, out);
             }
-            final long serializeEnd = System.nanoTime();
-            metrics.update(
-                SerializerMetrics.SerializerType.COLUMN_SUBSET,
-                serializeEnd - serializeStart,
-                TimeUnit.NANOSECONDS
-            );
         }
 
         public long serializedSubsetSize(Collection<ColumnMetadata> columns, Columns superset)

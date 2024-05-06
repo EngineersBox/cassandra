@@ -256,7 +256,7 @@ public class YamlConfigurationLoader implements ConfigurationLoader
         constructor.setPropertyUtils(propertiesChecker);
         Yaml yaml = new Yaml(constructor);
         Node node = yaml.represent(map);
-        constructor.setComposer(new Composer(null, null)
+        constructor.setComposer(new Composer(null, null, new LoaderOptions())
         {
             @Override
             public Node getSingleNode()

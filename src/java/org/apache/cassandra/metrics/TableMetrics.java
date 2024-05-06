@@ -283,6 +283,7 @@ public class TableMetrics
     public final SerializerMetrics indexSerializerRate;
     public final SerializerMetrics dataSerializerRate;
     public final SerializerMetrics partitionSerializerRate;
+    public final SerializerMetrics sstableWriterRate;
 
     public final ImmutableMap<SSTableFormat<?, ?>, ImmutableMap<String, Gauge<? extends Number>>> formatSpecificGauges;
 
@@ -870,6 +871,7 @@ public class TableMetrics
         this.dataSerializerRate = createTableSerializerMetrics("Data");
         this.indexSerializerRate = createTableSerializerMetrics("Index");
         this.partitionSerializerRate = createTableSerializerMetrics("Partition");
+        this.sstableWriterRate = createTableSerializerMetrics("SSTableWriter");
     }
 
     private Memtable.MemoryUsage getMemoryUsageWithIndexes(ColumnFamilyStore cfs)

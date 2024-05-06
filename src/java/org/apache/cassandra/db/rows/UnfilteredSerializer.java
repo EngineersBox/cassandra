@@ -214,11 +214,13 @@ public class UnfilteredSerializer
             serializeRowBody(row, flags, helper, out, metrics);
         }
         final long serializeEnd = System.nanoTime();
-        metrics.update(
-            SerializerMetrics.SerializerType.ROW,
-            serializeEnd - serializeStart,
-            TimeUnit.NANOSECONDS
-        );
+        if (metrics != null) {
+            metrics.update(
+                SerializerMetrics.SerializerType.ROW,
+                serializeEnd - serializeStart,
+                TimeUnit.NANOSECONDS
+            );
+        }
     }
 
     @Inline
@@ -243,8 +245,18 @@ public class UnfilteredSerializer
         if ((flags & HAS_DELETION) != 0)
             header.writeDeletionTime(deletion.time(), out);
 
-        if ((flags & HAS_ALL_COLUMNS) == 0)
-            Columns.serializer.serializeSubset(row.columns(), headerColumns, out); // TODO: Metrics
+        if ((flags & HAS_ALL_COLUMNS) == 0) {
+            final long subsetSerializeStart = System.nanoTime();
+            Columns.serializer.serializeSubset(row.columns(), headerColumns, out);
+            final long subsetSerializeEnd = System.nanoTime();
+            if (metrics != null) {
+                metrics.update(
+                    SerializerMetrics.SerializerType.COLUMN_SUBSET,
+                    subsetSerializeEnd - subsetSerializeStart,
+                    TimeUnit.NANOSECONDS
+                );
+            }
+        }
 
         SearchIterator<ColumnMetadata, ColumnMetadata> si = helper.iterator(isStatic);
 
@@ -272,11 +284,13 @@ public class UnfilteredSerializer
                     throw new WrappedException(e);
                 } finally {
                     final long columnSerializeEnd = System.nanoTime();
-                    metrics.update(
-                        SerializerMetrics.SerializerType.COLUMN,
-                        columnSerializeEnd - columnSerializeStart,
-                        TimeUnit.NANOSECONDS
-                    );
+                    if (metrics != null) {
+                        metrics.update(
+                            SerializerMetrics.SerializerType.COLUMN,
+                            columnSerializeEnd - columnSerializeStart,
+                            TimeUnit.NANOSECONDS
+                        );
+                    }
                 }
             });
         }
@@ -288,11 +302,13 @@ public class UnfilteredSerializer
             throw e;
         } finally {
             final long serializeEnd = System.nanoTime();
-            metrics.update(
-                SerializerMetrics.SerializerType.ROW_BODY,
-                serializeEnd - serializeStart,
-                TimeUnit.NANOSECONDS
-            );
+            if (metrics != null) {
+                metrics.update(
+                    SerializerMetrics.SerializerType.ROW_BODY,
+                    serializeEnd - serializeStart,
+                    TimeUnit.NANOSECONDS
+                );
+            }
         }
     }
 
@@ -315,7 +331,7 @@ public class UnfilteredSerializer
         final long serializeStart = System.nanoTime();
         SerializationHeader header = helper.header;
         out.writeByte((byte)IS_MARKER);
-        ClusteringBoundOrBoundary.serializer.serialize(marker.clustering(), out, version, header.clusteringTypes()); // TODO: Metrics
+        ClusteringBoundOrBoundary.serializer.serialize(marker.clustering(), out, version, header.clusteringTypes(), metrics);
 
         if (header.isForSSTable())
         {
@@ -334,11 +350,13 @@ public class UnfilteredSerializer
             header.writeDeletionTime(((RangeTombstoneBoundMarker)marker).deletionTime(), out);
         }
         final long serializeEnd = System.nanoTime();
-        metrics.update(
-            SerializerMetrics.SerializerType.RANGE_TOMBSTONE_MARKER,
-            serializeEnd - serializeStart,
-            TimeUnit.NANOSECONDS
-        );
+        if (metrics != null) {
+            metrics.update(
+                SerializerMetrics.SerializerType.RANGE_TOMBSTONE_MARKER,
+                serializeEnd - serializeStart,
+                TimeUnit.NANOSECONDS
+            );
+        }
     }
 
     public long serializedSize(Unfiltered unfiltered, SerializationHelper helper, int version)

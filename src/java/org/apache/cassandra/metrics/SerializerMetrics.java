@@ -38,7 +38,9 @@ public class SerializerMetrics {
         COLUMN_SUBSET,
         RANGE_TOMBSTONE_MARKER,
         CLUSTERING_KEY,
-        CELL;
+        CELL,
+        CFS,
+        INDEX_ENTRY;
 
         public String metricName() {
             return CaseFormat.UPPER_UNDERSCORE.to(

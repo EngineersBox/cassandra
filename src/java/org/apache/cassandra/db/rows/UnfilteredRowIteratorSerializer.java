@@ -143,13 +143,13 @@ public class UnfilteredRowIteratorSerializer
             header.writeDeletionTime(partitionDeletion, out);
 
         if (hasStatic)
-            UnfilteredSerializer.serializer.serialize(staticRow, helper, out, version);
+            UnfilteredSerializer.serializer.serialize(staticRow, helper, out, version, null);
 
         if (rowEstimate >= 0)
             out.writeUnsignedVInt32(rowEstimate);
 
         while (iterator.hasNext())
-            UnfilteredSerializer.serializer.serialize(iterator.next(), helper, out, version);
+            UnfilteredSerializer.serializer.serialize(iterator.next(), helper, out, version, null);
         UnfilteredSerializer.serializer.writeEndOfPartition(out);
     }
 

@@ -202,7 +202,7 @@ public class RowIndexEntryTest extends CQLTester
             SequentialWriterOption option = SequentialWriterOption.newBuilder().bufferSize(1024).build();
             File f = FileUtils.createTempFile("RowIndexEntryTest-", "db");
             dataWriterNew = new SequentialWriter(f, option);
-            partitionWriter = new BigFormatPartitionWriter(header, dataWriterNew, version, rieSerializer.indexInfoSerializer());
+            partitionWriter = new BigFormatPartitionWriter(header, dataWriterNew, version, rieSerializer.indexInfoSerializer(), null);
 
             f = FileUtils.createTempFile("RowIndexEntryTest-", "db");
             dataWriterOld = new SequentialWriter(f, option);
@@ -361,7 +361,7 @@ public class RowIndexEntryTest extends CQLTester
                 ByteBufferUtil.writeWithShortLength(iterator.partitionKey().getKey(), writer);
                 DeletionTime.getSerializer(version).serialize(iterator.partitionLevelDeletion(), writer);
                 if (header.hasStatic())
-                    UnfilteredSerializer.serializer.serializeStaticRow(iterator.staticRow(), helper, writer, version.correspondingMessagingVersion());
+                    UnfilteredSerializer.serializer.serializeStaticRow(iterator.staticRow(), helper, writer, version.correspondingMessagingVersion(), null);
             }
 
             public ColumnIndex build() throws IOException
@@ -402,7 +402,7 @@ public class RowIndexEntryTest extends CQLTester
                     startPosition = pos;
                 }
 
-                UnfilteredSerializer.serializer.serialize(unfiltered, helper, writer, pos - previousRowStart, version.correspondingMessagingVersion());
+                UnfilteredSerializer.serializer.serialize(unfiltered, helper, writer, pos - previousRowStart, version.correspondingMessagingVersion(), null);
 
                 // notify observers about each new row
                 if (!observers.isEmpty())

@@ -48,6 +48,7 @@ import org.apache.cassandra.io.util.DataPosition;
 import org.apache.cassandra.io.util.FileHandle;
 import org.apache.cassandra.io.util.MmappedRegionsCache;
 import org.apache.cassandra.io.util.SequentialWriter;
+import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.metrics.TableMetrics;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.Clock;
@@ -202,7 +203,8 @@ public class BtiTableWriter extends SortedTableWriter<BtiFormatPartitionWriter, 
                     final long serializeStart = System.nanoTime();
                     ((TrieIndexEntry) indexEntry).serialize(rowIndexWriter, rowIndexWriter.position(), descriptor.version);
                     final long serializeEnd = System.nanoTime();
-                    this.tableMetrics.indexSerializerRate.update(
+                    this.tableMetrics.sstableWriterRate.update(
+                        SerializerMetrics.SerializerType.INDEX_ENTRY,
                         serializeEnd - serializeStart,
                         TimeUnit.NANOSECONDS
                     );

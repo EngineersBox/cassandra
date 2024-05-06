@@ -55,6 +55,7 @@ import org.apache.cassandra.io.util.FileHandle;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.MmappedRegionsCache;
 import org.apache.cassandra.io.util.SequentialWriter;
+import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.metrics.TableMetrics;
 import org.apache.cassandra.service.CacheService;
 import org.apache.cassandra.utils.ByteBufferUtil;
@@ -282,7 +283,8 @@ public class BigTableWriter extends SortedTableWriter<BigFormatPartitionWriter, 
                 final long serializerStart = System.nanoTime();
                 rowIndexEntrySerializer.serialize(indexEntry, writer, indexInfo);
                 final long serializerEnd = System.nanoTime();
-                this.tableMetrics.indexSerializerRate.update(
+                this.tableMetrics.sstableWriterRate.update(
+                    SerializerMetrics.SerializerType.INDEX_ENTRY,
                     serializerEnd - serializerStart,
                     TimeUnit.NANOSECONDS
                 );
@@ -427,7 +429,13 @@ public class BigTableWriter extends SortedTableWriter<BigFormatPartitionWriter, 
             checkNotNull(indexWriter);
             checkState(!partitionWriterOpened, "Partition writer has been already opened.");
 
-            BigFormatPartitionWriter partitionWriter = new BigFormatPartitionWriter(getSerializationHeader(), dataWriter, descriptor.version, getRowIndexEntrySerializer().indexInfoSerializer());
+            BigFormatPartitionWriter partitionWriter = new BigFormatPartitionWriter(
+                getSerializationHeader(),
+                dataWriter,
+                descriptor.version,
+                getRowIndexEntrySerializer().indexInfoSerializer(),
+                tableMetrics
+            );
             this.partitionWriterOpened = true;
             return partitionWriter;
         }
