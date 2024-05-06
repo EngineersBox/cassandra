@@ -91,6 +91,8 @@ import org.apache.cassandra.io.util.DataInputBuffer;
 import org.apache.cassandra.io.util.DataInputPlus;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.io.util.File;
+import org.apache.cassandra.metrics.DefaultNameFactory;
+import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.schema.CQLTypeParser;
 import org.apache.cassandra.schema.ColumnMetadata;
@@ -1034,7 +1036,7 @@ public class AbstractTypeTest
 
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, null);
+            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, new SerializerMetrics(new DefaultNameFactory("test"), "test"));
             try (DataInputBuffer in = new DataInputBuffer(out.getData()))
             {
                 Row.Builder builder = BTreeRow.sortedBuilder();
@@ -1070,7 +1072,7 @@ public class AbstractTypeTest
         Row rightRow = Rows.simpleBuilder(rightTable).noPrimaryKeyLivenessInfo().add(rightColumn.name.toString(), v).build();
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, null);
+            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, new SerializerMetrics(new DefaultNameFactory("test"), "test"));
             try (DataInputBuffer in = new DataInputBuffer(out.getData()))
             {
                 Row.Builder builder = BTreeRow.sortedBuilder();
@@ -1095,7 +1097,7 @@ public class AbstractTypeTest
         Row rightRow = Rows.simpleBuilder(rightTable).noPrimaryKeyLivenessInfo().add(rightColumn.name.toString(), v).build();
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, null);
+            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, new SerializerMetrics(new DefaultNameFactory("test"), "test"));
             try (DataInputBuffer in = new DataInputBuffer(out.getData()))
             {
                 Row.Builder builder = BTreeRow.sortedBuilder();

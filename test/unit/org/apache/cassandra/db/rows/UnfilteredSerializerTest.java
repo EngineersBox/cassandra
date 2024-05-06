@@ -36,6 +36,8 @@ import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.db.marshal.IntegerType;
 import org.apache.cassandra.io.util.DataInputBuffer;
 import org.apache.cassandra.io.util.DataOutputBuffer;
+import org.apache.cassandra.metrics.DefaultNameFactory;
+import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.schema.TableMetadata;
 
@@ -91,7 +93,7 @@ public class UnfilteredSerializerTest
 
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(writtenRow, new SerializationHelper(SerializationHeader.makeWithoutStats(md)), out, 0, MessagingService.current_version, null);
+            UnfilteredSerializer.serializer.serialize(writtenRow, new SerializationHelper(SerializationHeader.makeWithoutStats(md)), out, 0, MessagingService.current_version, new SerializerMetrics(new DefaultNameFactory("test"), "test"));
             out.flush();
             try (DataInputBuffer in = new DataInputBuffer(transform.apply(out.asNewBuffer()), false))
             {
