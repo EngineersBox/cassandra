@@ -26,7 +26,7 @@ import java.util.List;
 
 import org.apache.cassandra.db.marshal.ByteArrayAccessor;
 import org.apache.cassandra.db.marshal.ByteBufferAccessor;
-import org.apache.cassandra.metrics.SerializerMetrics;
+import org.apache.cassandra.metrics.serde.TableSerializerMetrics;
 import org.apache.cassandra.schema.TableMetadata;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.io.util.DataInputPlus;
@@ -102,7 +102,7 @@ public interface ClusteringBoundOrBoundary<V> extends ClusteringPrefix<V>
     public static class Serializer
     {
         public <T> void serialize(ClusteringBoundOrBoundary<T> bound, DataOutputPlus out, int version, List<AbstractType<?>> types,
-                                  final SerializerMetrics metrics) throws IOException
+                                  final TableSerializerMetrics metrics) throws IOException
         {
             out.writeByte(bound.kind().ordinal());
             out.writeShort(bound.size());

@@ -16,47 +16,27 @@
  * limitations under the License.
  */
 
-package org.apache.cassandra.metrics;
+package org.apache.cassandra.metrics.serde;
 
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.concurrent.TimeUnit;
 
-import com.google.common.base.CaseFormat;
-
 import com.codahale.metrics.Timer;
+import org.apache.cassandra.metrics.CassandraMetricsRegistry;
+import org.apache.cassandra.metrics.MetricNameFactory;
 
 import static org.apache.cassandra.metrics.CassandraMetricsRegistry.Metrics;
 
-public class SerializerMetrics {
-
-    public enum SerializerType {
-        ROW,
-        ROW_BODY,
-        COLUMN,
-        COLUMN_SUBSET,
-        RANGE_TOMBSTONE_MARKER,
-        CLUSTERING_KEY,
-        CELL,
-        CFS,
-        INDEX_ENTRY;
-
-        public String metricName() {
-            return CaseFormat.UPPER_UNDERSCORE.to(
-                CaseFormat.UPPER_CAMEL,
-                name()
-            );
-        }
-
-    }
+public class KeyspaceSerializerMetrics  {
 
     public final EnumMap<SerializerType, Timer> timers;
 
     private final MetricNameFactory nameFactory;
     private final String namePrefix;
 
-    public SerializerMetrics(final MetricNameFactory nameFactory, final String namePrefix) {
+    public KeyspaceSerializerMetrics(final MetricNameFactory nameFactory, final String namePrefix) {
         this.nameFactory = nameFactory;
         this.namePrefix = namePrefix;
         this.timers = new EnumMap<>(SerializerType.class);

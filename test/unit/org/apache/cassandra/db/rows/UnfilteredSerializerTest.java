@@ -28,6 +28,7 @@ import java.util.function.Function;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.codahale.metrics.Timer;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.Clustering;
 import org.apache.cassandra.db.SerializationHeader;
@@ -37,7 +38,9 @@ import org.apache.cassandra.db.marshal.IntegerType;
 import org.apache.cassandra.io.util.DataInputBuffer;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.metrics.DefaultNameFactory;
-import org.apache.cassandra.metrics.SerializerMetrics;
+import org.apache.cassandra.metrics.TableMetrics;
+import org.apache.cassandra.metrics.serde.KeyspaceSerializerMetrics;
+import org.apache.cassandra.metrics.serde.TableSerializerMetrics;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.schema.TableMetadata;
 
@@ -93,7 +96,22 @@ public class UnfilteredSerializerTest
 
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(writtenRow, new SerializationHelper(SerializationHeader.makeWithoutStats(md)), out, 0, MessagingService.current_version, new SerializerMetrics(new DefaultNameFactory("test"), "test"));
+            UnfilteredSerializer.serializer.serialize(
+                writtenRow,
+                new SerializationHelper(SerializationHeader.makeWithoutStats(md)),
+                out,
+                0,
+                MessagingService.current_version,
+                new TableSerializerMetrics(
+                    new DefaultNameFactory("test"),
+                    "test",
+                    new KeyspaceSerializerMetrics(
+                        new DefaultNameFactory("test"),
+                        "test"
+                    ),
+                    (final String name, final Timer timer) -> new TableMetrics.TableTimer()
+                )
+            );
             out.flush();
             try (DataInputBuffer in = new DataInputBuffer(transform.apply(out.asNewBuffer()), false))
             {

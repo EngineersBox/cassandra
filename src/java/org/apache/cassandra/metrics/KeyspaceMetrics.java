@@ -35,6 +35,7 @@ import org.apache.cassandra.io.sstable.GaugeProvider;
 import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.metrics.CassandraMetricsRegistry.MetricName;
 import org.apache.cassandra.metrics.TableMetrics.ReleasableMetric;
+import org.apache.cassandra.metrics.serde.KeyspaceSerializerMetrics;
 
 import static org.apache.cassandra.metrics.CassandraMetricsRegistry.Metrics;
 
@@ -85,6 +86,10 @@ public class KeyspaceMetrics
     public final Histogram sstablesPerReadHistogram;
     /** Histogram of the number of sstable data files accessed per partition range read */
     public final Histogram sstablesPerRangeReadHistogram;
+    public final KeyspaceSerializerMetrics indexSerializerRate;
+    public final KeyspaceSerializerMetrics dataSerializerRate;
+    public final KeyspaceSerializerMetrics partitionSerializerRate;
+    public final KeyspaceSerializerMetrics sstableWriterRate;
     /** Tombstones scanned in queries on this Keyspace */
     public final Histogram tombstoneScannedHistogram;
     /** Live cells scanned in queries on this Keyspace */
@@ -283,6 +288,11 @@ public class KeyspaceMetrics
         tooManySSTableIndexesReadAborts = createKeyspaceMeter("TooManySSTableIndexesReadAborts");
 
         formatSpecificGauges = createFormatSpecificGauges(keyspace);
+
+        this.dataSerializerRate = createKeyspaceSerializerMetrics("Data");
+        this.indexSerializerRate = createKeyspaceSerializerMetrics("Index");
+        this.partitionSerializerRate = createKeyspaceSerializerMetrics("Partition");
+        this.sstableWriterRate = createKeyspaceSerializerMetrics("SSTableWriter");
     }
 
     /**
@@ -373,6 +383,15 @@ public class KeyspaceMetrics
     {
         allMetrics.add(() -> releaseMetric(name));
         return Metrics.histogram(factory.createMetricName(name), considerZeroes);
+    }
+
+    protected KeyspaceSerializerMetrics createKeyspaceSerializerMetrics(final String name) {
+        final KeyspaceSerializerMetrics keyspaceSerializerMetrics = new KeyspaceSerializerMetrics(
+            this.factory,
+            name
+        );
+        this.allMetrics.add(keyspaceSerializerMetrics::release);
+        return keyspaceSerializerMetrics;
     }
 
     protected Timer createKeyspaceTimer(String name)

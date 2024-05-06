@@ -29,7 +29,8 @@ import org.apache.cassandra.db.SerializationHeader;
 import org.apache.cassandra.db.marshal.ValueAccessor;
 import org.apache.cassandra.io.util.DataInputPlus;
 import org.apache.cassandra.io.util.DataOutputPlus;
-import org.apache.cassandra.metrics.SerializerMetrics;
+import org.apache.cassandra.metrics.serde.TableSerializerMetrics;
+import org.apache.cassandra.metrics.serde.SerializerType;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.utils.CassandraUInt;
@@ -269,7 +270,7 @@ public abstract class Cell<V> extends ColumnData
         private final static int USE_ROW_TTL_MASK            = 0x10; // Wether the cell has the same ttl than the row this is a cell of.
 
         public <T> void serialize(Cell<T> cell, ColumnMetadata column, DataOutputPlus out, LivenessInfo rowLiveness, SerializationHeader header,
-                                  final SerializerMetrics metrics) throws IOException
+                                  final TableSerializerMetrics metrics) throws IOException
         {
             final long serializeStart = Clock.Global.nanoTime();
             assert cell != null;
@@ -310,9 +311,9 @@ public abstract class Cell<V> extends ColumnData
             final long serializeEnd = Clock.Global.nanoTime();
             if (metrics != null) {
                 metrics.update(
-                        SerializerMetrics.SerializerType.CELL,
+                SerializerType.CELL,
                         serializeEnd - serializeStart,
-                        TimeUnit.NANOSECONDS
+                TimeUnit.NANOSECONDS
                 );
             }
         }

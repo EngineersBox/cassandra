@@ -55,8 +55,8 @@ import org.apache.cassandra.io.util.FileHandle;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.io.util.MmappedRegionsCache;
 import org.apache.cassandra.io.util.SequentialWriter;
-import org.apache.cassandra.metrics.SerializerMetrics;
 import org.apache.cassandra.metrics.TableMetrics;
+import org.apache.cassandra.metrics.serde.SerializerType;
 import org.apache.cassandra.service.CacheService;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.Clock;
@@ -285,9 +285,9 @@ public class BigTableWriter extends SortedTableWriter<BigFormatPartitionWriter, 
                 rowIndexEntrySerializer.serialize(indexEntry, writer, indexInfo);
                 final long serializerEnd = Clock.Global.nanoTime();
                 this.tableMetrics.sstableWriterRate.update(
-                    SerializerMetrics.SerializerType.INDEX_ENTRY,
+                SerializerType.INDEX_ENTRY,
                     serializerEnd - serializerStart,
-                    TimeUnit.NANOSECONDS
+                TimeUnit.NANOSECONDS
                 );
             }
             catch (IOException e)

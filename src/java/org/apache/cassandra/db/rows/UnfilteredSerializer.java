@@ -29,7 +29,8 @@ import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.io.util.DataOutputPlus;
 import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.TrackedDataInputPlus;
-import org.apache.cassandra.metrics.SerializerMetrics;
+import org.apache.cassandra.metrics.serde.TableSerializerMetrics;
+import org.apache.cassandra.metrics.serde.SerializerType;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.utils.Clock;
@@ -125,7 +126,7 @@ public class UnfilteredSerializer
     private final static int HAS_SHADOWABLE_DELETION = 0x02; // Whether the row deletion is shadowable. If there is no extended flag (or no row deletion), the deletion is assumed not shadowable.
 
     public void serialize(Unfiltered unfiltered, SerializationHelper helper, DataOutputPlus out, int version,
-                          final SerializerMetrics metrics)
+                          final TableSerializerMetrics metrics)
     throws IOException
     {
         assert !helper.header.isForSSTable();
@@ -133,7 +134,7 @@ public class UnfilteredSerializer
     }
 
     public void serialize(Unfiltered unfiltered, SerializationHelper helper, DataOutputPlus out, long previousUnfilteredSize,
-                          int version, final SerializerMetrics metrics)
+                          int version, final TableSerializerMetrics metrics)
     throws IOException
     {
         if (unfiltered.kind() == Unfiltered.Kind.RANGE_TOMBSTONE_MARKER)
@@ -147,7 +148,7 @@ public class UnfilteredSerializer
     }
 
     public void serializeStaticRow(Row row, SerializationHelper helper, DataOutputPlus out, int version,
-                                   final SerializerMetrics metrics)
+                                   final TableSerializerMetrics metrics)
     throws IOException
     {
         assert row.isStatic();
@@ -155,7 +156,7 @@ public class UnfilteredSerializer
     }
 
     private void serialize(Row row, SerializationHelper helper, DataOutputPlus out, long previousUnfilteredSize, int version,
-                           final SerializerMetrics metrics)
+                           final TableSerializerMetrics metrics)
     throws IOException
     {
         final long serializeStart = Clock.Global.nanoTime();
@@ -217,15 +218,15 @@ public class UnfilteredSerializer
         final long serializeEnd = Clock.Global.nanoTime();
         if (metrics != null) {
             metrics.update(
-                SerializerMetrics.SerializerType.ROW,
+            SerializerType.ROW,
                 serializeEnd - serializeStart,
-                TimeUnit.NANOSECONDS
+            TimeUnit.NANOSECONDS
             );
         }
     }
 
     @Inline
-    private void serializeRowBody(Row row, int flags, SerializationHelper helper, DataOutputPlus out, final SerializerMetrics metrics)
+    private void serializeRowBody(Row row, int flags, SerializationHelper helper, DataOutputPlus out, final TableSerializerMetrics metrics)
     throws IOException
     {
         final long serializeStart = Clock.Global.nanoTime();
@@ -252,9 +253,9 @@ public class UnfilteredSerializer
             final long subsetSerializeEnd = Clock.Global.nanoTime();
             if (metrics != null) {
                 metrics.update(
-                    SerializerMetrics.SerializerType.COLUMN_SUBSET,
+                SerializerType.COLUMN_SUBSET,
                     subsetSerializeEnd - subsetSerializeStart,
-                    TimeUnit.NANOSECONDS
+                TimeUnit.NANOSECONDS
                 );
             }
         }
@@ -287,9 +288,9 @@ public class UnfilteredSerializer
                     final long columnSerializeEnd = Clock.Global.nanoTime();
                     if (metrics != null) {
                         metrics.update(
-                            SerializerMetrics.SerializerType.COLUMN,
+                        SerializerType.COLUMN,
                             columnSerializeEnd - columnSerializeStart,
-                            TimeUnit.NANOSECONDS
+                        TimeUnit.NANOSECONDS
                         );
                     }
                 }
@@ -305,16 +306,16 @@ public class UnfilteredSerializer
             final long serializeEnd = Clock.Global.nanoTime();
             if (metrics != null) {
                 metrics.update(
-                    SerializerMetrics.SerializerType.ROW_BODY,
+                SerializerType.ROW_BODY,
                     serializeEnd - serializeStart,
-                    TimeUnit.NANOSECONDS
+                TimeUnit.NANOSECONDS
                 );
             }
         }
     }
 
     private void writeComplexColumn(ComplexColumnData data, ColumnMetadata column, boolean hasComplexDeletion, LivenessInfo rowLiveness, SerializationHeader header, DataOutputPlus out,
-                                    final SerializerMetrics metrics)
+                                    final TableSerializerMetrics metrics)
     throws IOException
     {
         if (hasComplexDeletion)
@@ -326,7 +327,7 @@ public class UnfilteredSerializer
     }
 
     private void serialize(RangeTombstoneMarker marker, SerializationHelper helper, DataOutputPlus out, long previousUnfilteredSize,
-                           int version, final SerializerMetrics metrics)
+                           int version, final TableSerializerMetrics metrics)
     throws IOException
     {
         final long serializeStart = Clock.Global.nanoTime();
@@ -353,9 +354,9 @@ public class UnfilteredSerializer
         final long serializeEnd = Clock.Global.nanoTime();
         if (metrics != null) {
             metrics.update(
-                SerializerMetrics.SerializerType.RANGE_TOMBSTONE_MARKER,
+            SerializerType.RANGE_TOMBSTONE_MARKER,
                 serializeEnd - serializeStart,
-                TimeUnit.NANOSECONDS
+            TimeUnit.NANOSECONDS
             );
         }
     }

@@ -24,7 +24,7 @@ import java.util.List;
 
 import org.apache.cassandra.cache.IMeasurableMemory;
 import org.apache.cassandra.db.marshal.ByteArrayAccessor;
-import org.apache.cassandra.metrics.SerializerMetrics;
+import org.apache.cassandra.metrics.serde.TableSerializerMetrics;
 import org.apache.cassandra.schema.ColumnMetadata;
 import org.apache.cassandra.schema.TableMetadata;
 import org.apache.cassandra.db.marshal.AbstractType;
@@ -140,14 +140,14 @@ public interface Clustering<V> extends ClusteringPrefix<V>, IMeasurableMemory
     public static class Serializer
     {
         public void serialize(Clustering<?> clustering, DataOutputPlus out, int version, List<AbstractType<?>> types,
-                              final SerializerMetrics metrics) throws IOException
+                              final TableSerializerMetrics metrics) throws IOException
         {
             assert clustering != STATIC_CLUSTERING : "We should never serialize a static clustering";
             assert clustering.size() == types.size() : "Invalid clustering for the table: " + clustering;
             ClusteringPrefix.serializer.serializeValuesWithoutSize(clustering, out, version, types, metrics);
         }
 
-        public ByteBuffer serialize(Clustering<?> clustering, int version, List<AbstractType<?>> types, final SerializerMetrics metrics)
+        public ByteBuffer serialize(Clustering<?> clustering, int version, List<AbstractType<?>> types, final TableSerializerMetrics metrics)
         {
             try (DataOutputBuffer buffer = new DataOutputBuffer((int)serializedSize(clustering, version, types)))
             {

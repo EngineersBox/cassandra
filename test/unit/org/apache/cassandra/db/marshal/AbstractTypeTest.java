@@ -60,6 +60,7 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.codahale.metrics.Timer;
 import net.minidev.json.JSONArray;
 import net.minidev.json.JSONObject;
 import net.minidev.json.parser.JSONParser;
@@ -92,7 +93,9 @@ import org.apache.cassandra.io.util.DataInputPlus;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.io.util.File;
 import org.apache.cassandra.metrics.DefaultNameFactory;
-import org.apache.cassandra.metrics.SerializerMetrics;
+import org.apache.cassandra.metrics.TableMetrics;
+import org.apache.cassandra.metrics.serde.KeyspaceSerializerMetrics;
+import org.apache.cassandra.metrics.serde.TableSerializerMetrics;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.schema.CQLTypeParser;
 import org.apache.cassandra.schema.ColumnMetadata;
@@ -1036,7 +1039,21 @@ public class AbstractTypeTest
 
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, new SerializerMetrics(new DefaultNameFactory("test"), "test"));
+            UnfilteredSerializer.serializer.serialize(
+                rightRow,
+                rightHelper,
+                out,
+                MessagingService.current_version,
+                new TableSerializerMetrics(
+                    new DefaultNameFactory("test"),
+                    "test",
+                    new KeyspaceSerializerMetrics(
+                        new DefaultNameFactory("test"),
+                        "test"
+                    ),
+                    (final String name, final Timer timer) -> new TableMetrics.TableTimer()
+                )
+            );
             try (DataInputBuffer in = new DataInputBuffer(out.getData()))
             {
                 Row.Builder builder = BTreeRow.sortedBuilder();
@@ -1072,7 +1089,21 @@ public class AbstractTypeTest
         Row rightRow = Rows.simpleBuilder(rightTable).noPrimaryKeyLivenessInfo().add(rightColumn.name.toString(), v).build();
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, new SerializerMetrics(new DefaultNameFactory("test"), "test"));
+            UnfilteredSerializer.serializer.serialize(
+                rightRow,
+                rightHelper,
+                out,
+                MessagingService.current_version,
+                new TableSerializerMetrics(
+                    new DefaultNameFactory("test"),
+                    "test",
+                    new KeyspaceSerializerMetrics(
+                        new DefaultNameFactory("test"),
+                        "test"
+                    ),
+                    (final String name, final Timer timer) -> new TableMetrics.TableTimer()
+                )
+            );
             try (DataInputBuffer in = new DataInputBuffer(out.getData()))
             {
                 Row.Builder builder = BTreeRow.sortedBuilder();
@@ -1097,7 +1128,21 @@ public class AbstractTypeTest
         Row rightRow = Rows.simpleBuilder(rightTable).noPrimaryKeyLivenessInfo().add(rightColumn.name.toString(), v).build();
         try (DataOutputBuffer out = new DataOutputBuffer())
         {
-            UnfilteredSerializer.serializer.serialize(rightRow, rightHelper, out, MessagingService.current_version, new SerializerMetrics(new DefaultNameFactory("test"), "test"));
+            UnfilteredSerializer.serializer.serialize(
+                rightRow,
+                rightHelper,
+                out,
+                MessagingService.current_version,
+                new TableSerializerMetrics(
+                    new DefaultNameFactory("test"),
+                    "test",
+                    new KeyspaceSerializerMetrics(
+                        new DefaultNameFactory("test"),
+                        "test"
+                    ),
+                    (final String name, final Timer timer) -> new TableMetrics.TableTimer()
+                )
+            );
             try (DataInputBuffer in = new DataInputBuffer(out.getData()))
             {
                 Row.Builder builder = BTreeRow.sortedBuilder();

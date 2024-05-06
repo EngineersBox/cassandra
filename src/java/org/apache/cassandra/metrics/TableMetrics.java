@@ -55,6 +55,8 @@ import org.apache.cassandra.io.sstable.format.SSTableFormat;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.io.sstable.metadata.MetadataCollector;
 import org.apache.cassandra.metrics.Sampler.SamplerType;
+import org.apache.cassandra.metrics.serde.KeyspaceSerializerMetrics;
+import org.apache.cassandra.metrics.serde.TableSerializerMetrics;
 import org.apache.cassandra.schema.Schema;
 import org.apache.cassandra.schema.SchemaConstants;
 import org.apache.cassandra.utils.EstimatedHistogram;
@@ -280,10 +282,10 @@ public class TableMetrics
     public final TableMeter tooManySSTableIndexesReadWarnings;
     public final TableMeter tooManySSTableIndexesReadAborts;
 
-    public final SerializerMetrics indexSerializerRate;
-    public final SerializerMetrics dataSerializerRate;
-    public final SerializerMetrics partitionSerializerRate;
-    public final SerializerMetrics sstableWriterRate;
+    public final TableSerializerMetrics indexSerializerRate;
+    public final TableSerializerMetrics dataSerializerRate;
+    public final TableSerializerMetrics partitionSerializerRate;
+    public final TableSerializerMetrics sstableWriterRate;
 
     public final ImmutableMap<SSTableFormat<?, ?>, ImmutableMap<String, Gauge<? extends Number>>> formatSpecificGauges;
 
@@ -868,10 +870,10 @@ public class TableMetrics
 
         formatSpecificGauges = createFormatSpecificGauges(cfs);
 
-        this.dataSerializerRate = createTableSerializerMetrics("Data");
-        this.indexSerializerRate = createTableSerializerMetrics("Index");
-        this.partitionSerializerRate = createTableSerializerMetrics("Partition");
-        this.sstableWriterRate = createTableSerializerMetrics("SSTableWriter");
+        this.dataSerializerRate = createTableSerializerMetrics("Data", cfs.keyspace.metric.dataSerializerRate);
+        this.indexSerializerRate = createTableSerializerMetrics("Index", cfs.keyspace.metric.indexSerializerRate);
+        this.partitionSerializerRate = createTableSerializerMetrics("Partition", cfs.keyspace.metric.partitionSerializerRate);
+        this.sstableWriterRate = createTableSerializerMetrics("SSTableWriter", cfs.keyspace.metric.sstableWriterRate);
     }
 
     private Memtable.MemoryUsage getMemoryUsageWithIndexes(ColumnFamilyStore cfs)
@@ -920,10 +922,16 @@ public class TableMetrics
         return builder.build();
     }
 
-    protected SerializerMetrics createTableSerializerMetrics(final String name) {
-        final SerializerMetrics serializerMetrics = new SerializerMetrics(GLOBAL_FACTORY, name);
-        this.all.add(serializerMetrics::release);
-        return serializerMetrics;
+    protected TableSerializerMetrics createTableSerializerMetrics(final String name,
+                                                                  final KeyspaceSerializerMetrics keyspaceSerializerMetrics) {
+        final TableSerializerMetrics tableSerializerMetrics = new TableSerializerMetrics(
+            GLOBAL_FACTORY,
+            name,
+            keyspaceSerializerMetrics,
+            TableMetrics.this::createTableTimer
+        );
+        this.all.add(tableSerializerMetrics::release);
+        return tableSerializerMetrics;
     }
 
     /**
@@ -946,7 +954,10 @@ public class TableMetrics
 
     protected <G,T> Gauge<T> createTableGauge(String name, String alias, Gauge<T> gauge, Gauge<G> globalGauge)
     {
-        Gauge<T> cfGauge = Metrics.register(factory.createMetricName(name), aliasFactory.createMetricName(alias), gauge);
+        Gauge<T> cfGauge = Metrics.register(
+        factory.createMetricName(name),
+        aliasFactory.createMetricName(alias),
+        gauge);
         if (register(name, alias, cfGauge) && globalGauge != null)
         {
             Metrics.register(GLOBAL_FACTORY.createMetricName(name), GLOBAL_ALIAS_FACTORY.createMetricName(alias), globalGauge);
@@ -1227,6 +1238,13 @@ public class TableMetrics
         public final Timer[] all;
         public final Timer cf;
         public final Timer global;
+
+        @VisibleForTesting
+        public TableTimer() {
+            this.cf = null;
+            this.global = null;
+            this.all = new Timer[0];
+        }
 
         private TableTimer(Timer cf, Timer keyspace, Timer global)
         {

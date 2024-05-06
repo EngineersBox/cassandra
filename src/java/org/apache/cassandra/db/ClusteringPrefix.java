@@ -34,7 +34,8 @@ import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.io.util.DataInputPlus;
 import org.apache.cassandra.io.util.DataOutputPlus;
-import org.apache.cassandra.metrics.SerializerMetrics;
+import org.apache.cassandra.metrics.serde.TableSerializerMetrics;
+import org.apache.cassandra.metrics.serde.SerializerType;
 import org.apache.cassandra.schema.TableMetadata;
 import org.apache.cassandra.utils.ByteArrayUtil;
 import org.apache.cassandra.utils.Clock;
@@ -456,7 +457,7 @@ public interface ClusteringPrefix<V> extends IMeasurableMemory, Clusterable<V>
         }
 
         <V> void serializeValuesWithoutSize(ClusteringPrefix<V> clustering, DataOutputPlus out, int version, List<AbstractType<?>> types,
-                                            final SerializerMetrics metrics) throws IOException
+                                            final TableSerializerMetrics metrics) throws IOException
         {
             final long serializeStart = Clock.Global.nanoTime();
             int offset = 0;
@@ -482,9 +483,9 @@ public interface ClusteringPrefix<V> extends IMeasurableMemory, Clusterable<V>
             final long serializeEnd = Clock.Global.nanoTime();
             if (metrics != null) {
                 metrics.update(
-                    SerializerMetrics.SerializerType.CLUSTERING_KEY,
+                SerializerType.CLUSTERING_KEY,
                     serializeEnd - serializeStart,
-                    TimeUnit.NANOSECONDS
+                TimeUnit.NANOSECONDS
                 );
             }
         }
