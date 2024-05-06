@@ -124,6 +124,25 @@ final class HintsStore
         return new PendingHintsInfo(hostId, queueSize, minTimestamp, maxTimestamp);
     }
 
+    /**
+     * Find the oldest hint written for a particular node by looking into descriptors
+     * and current open writer, if any.
+     *
+     * @return the oldest hint as per unix time or Long.MAX_VALUE if not present
+     */
+    public long findOldestHintTimestamp()
+    {
+        HintsDescriptor desc = dispatchDequeue.peekFirst();
+        if (desc != null)
+            return desc.timestamp;
+
+        HintsWriter writer = getWriter();
+        if (writer != null)
+            return writer.descriptor().timestamp;
+
+        return Long.MAX_VALUE;
+    }
+
     boolean isLive()
     {
         InetAddressAndPort address = address();
@@ -194,8 +213,8 @@ final class HintsStore
                 if (predicate.test(descriptor))
                 {
                     cleanUp(descriptor);
-                    delete(descriptor);
                     removeSet.add(descriptor);
+                    delete(descriptor);
                 }
             }
         }
@@ -235,7 +254,6 @@ final class HintsStore
         dispatchPositions.put(descriptor, inputPosition);
     }
 
-
     /**
      * @return the total size of all files belonging to the hints store, in bytes.
      */
@@ -243,9 +261,12 @@ final class HintsStore
     {
         long total = 0;
         for (HintsDescriptor descriptor : Iterables.concat(dispatchDequeue, corruptedFiles))
-        {
-            total += descriptor.file(hintsDirectory).length();
-        }
+            total += descriptor.hintsFileSize(hintsDirectory);
+
+        HintsWriter currentWriter = getWriter();
+        if (null != currentWriter)
+            total += currentWriter.descriptor().hintsFileSize(hintsDirectory);
+
         return total;
     }
 
@@ -258,14 +279,6 @@ final class HintsStore
     void markCorrupted(HintsDescriptor descriptor)
     {
         corruptedFiles.add(descriptor);
-    }
-
-    /**
-     * @return a copy of the first {@link HintsDescriptor} in the queue for dispatch or {@code null} if queue is empty.
-     */
-    HintsDescriptor getFirstDescriptor()
-    {
-        return dispatchDequeue.peekFirst();
     }
 
     /*
