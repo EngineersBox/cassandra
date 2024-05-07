@@ -306,9 +306,9 @@ public class UnfilteredSerializer
             final long serializeEnd = Clock.Global.nanoTime();
             if (metrics != null) {
                 metrics.update(
-                SerializerType.ROW_BODY,
+                    SerializerType.ROW_BODY,
                     serializeEnd - serializeStart,
-                TimeUnit.NANOSECONDS
+                    TimeUnit.NANOSECONDS
                 );
             }
         }
@@ -354,9 +354,9 @@ public class UnfilteredSerializer
         final long serializeEnd = Clock.Global.nanoTime();
         if (metrics != null) {
             metrics.update(
-            SerializerType.RANGE_TOMBSTONE_MARKER,
+                SerializerType.RANGE_TOMBSTONE_MARKER,
                 serializeEnd - serializeStart,
-            TimeUnit.NANOSECONDS
+                TimeUnit.NANOSECONDS
             );
         }
     }

@@ -925,7 +925,7 @@ public class TableMetrics
     protected TableSerializerMetrics createTableSerializerMetrics(final String name,
                                                                   final KeyspaceSerializerMetrics keyspaceSerializerMetrics) {
         final TableSerializerMetrics tableSerializerMetrics = new TableSerializerMetrics(
-            GLOBAL_FACTORY,
+            factory,
             name,
             keyspaceSerializerMetrics,
             TableMetrics.this::createTableTimer

@@ -62,7 +62,7 @@ public class TableSerializerMetrics
         this.timers.put(
             type,
             this.timerProvider.apply(
-                name.getMetricName(),
+                name.getName(),
                 this.keyspaceSerializerMetrics.timers.get(type)
             )
         );
