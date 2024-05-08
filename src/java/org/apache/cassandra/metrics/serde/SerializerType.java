@@ -22,15 +22,33 @@ import com.google.common.base.CaseFormat;
 
 public enum SerializerType
 {
+    // Time for unfiltered serializer to serialize the entire row
     ROW,
+    // Time for unfiltered serializer to serialize the row body
     ROW_BODY,
+    // Time for unfiltered serializer to serialize the current
+    // column of this row
     COLUMN,
+    // Time for unfiltered serializer to serialize all the
+    // columns for this row
+    ALL_COLUMNS,
+    // Time for unfiltered serialize to serialize header columns
+    // for this row when the HAS_ALL_COLUMNS flag is set
     COLUMN_SUBSET,
+    // Time for unfiltered serializer to serialize a range tombstone marker
+    // in this row
     RANGE_TOMBSTONE_MARKER,
+    // Time for clustering prefix to serialize the clustering key
     CLUSTERING_KEY,
+    // Time for cell to serialize the entire cell
     CELL,
+    // Time for column family store to serialize and flush an SSTable to disk
     CFS,
-    INDEX_ENTRY;
+    // Time taken to serialize an appended index entry (decorated key + abstract index entry)
+    // within a table writer (BigTableWriter, BtiTableWriter)
+    INDEX_ENTRY,
+    // Time taken from creation of partition writer to finish() invocation
+    PARTITION;
 
     public String metricName()
     {

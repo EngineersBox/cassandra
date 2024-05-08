@@ -19,6 +19,7 @@
 package org.apache.cassandra.io.sstable.format;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.cassandra.db.ClusteringPrefix;
 import org.apache.cassandra.db.DecoratedKey;
@@ -31,7 +32,9 @@ import org.apache.cassandra.db.rows.Unfiltered;
 import org.apache.cassandra.db.rows.UnfilteredSerializer;
 import org.apache.cassandra.io.util.SequentialWriter;
 import org.apache.cassandra.metrics.TableMetrics;
+import org.apache.cassandra.metrics.serde.SerializerType;
 import org.apache.cassandra.utils.ByteBufferUtil;
+import org.apache.cassandra.utils.Clock;
 
 import static com.google.common.base.Preconditions.checkState;
 
@@ -69,6 +72,7 @@ public abstract class SortedTablePartitionWriter implements AutoCloseable
     }
 
     State state = State.AWAITING_PARTITION_HEADER;
+    private final long sstableSerializeStart;
 
     protected SortedTablePartitionWriter(SerializationHeader header,
                                          SequentialWriter writer,
@@ -81,6 +85,7 @@ public abstract class SortedTablePartitionWriter implements AutoCloseable
         this.helper = new SerializationHelper(header);
         this.version = version;
         this.tableMetrics = tableMetrics;
+        this.sstableSerializeStart = Clock.Global.nanoTime();
     }
 
     protected void reset()
@@ -168,7 +173,14 @@ public abstract class SortedTablePartitionWriter implements AutoCloseable
 
         long endPosition = currentPosition();
         unfilteredSerializer.writeEndOfPartition(writer);
-
+        if (this.tableMetrics != null) {
+            final long serializeEnd = Clock.Global.nanoTime();
+            this.tableMetrics.sstableWriterRate.update(
+                SerializerType.PARTITION,
+                serializeEnd - this.sstableSerializeStart,
+                TimeUnit.NANOSECONDS
+            );
+        }
         return endPosition;
     }
 

@@ -262,6 +262,7 @@ public class UnfilteredSerializer
 
         SearchIterator<ColumnMetadata, ColumnMetadata> si = helper.iterator(isStatic);
 
+        final long allColumnsSerializeStart = Clock.Global.nanoTime();
         try
         {
             row.apply(cd -> {
@@ -288,9 +289,9 @@ public class UnfilteredSerializer
                     final long columnSerializeEnd = Clock.Global.nanoTime();
                     if (metrics != null) {
                         metrics.update(
-                        SerializerType.COLUMN,
+                            SerializerType.COLUMN,
                             columnSerializeEnd - columnSerializeStart,
-                        TimeUnit.NANOSECONDS
+                            TimeUnit.NANOSECONDS
                         );
                     }
                 }
@@ -303,8 +304,13 @@ public class UnfilteredSerializer
 
             throw e;
         } finally {
-            final long serializeEnd = Clock.Global.nanoTime();
             if (metrics != null) {
+                final long serializeEnd = Clock.Global.nanoTime();
+                metrics.update(
+                    SerializerType.ALL_COLUMNS,
+                    serializeEnd - allColumnsSerializeStart,
+                    TimeUnit.NANOSECONDS
+                );
                 metrics.update(
                     SerializerType.ROW_BODY,
                     serializeEnd - serializeStart,
