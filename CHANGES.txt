@@ -1,4 +1,8 @@
 5.0-beta2
+ * Refresh stale paxos commit (CASSANDRA-19617)
+ * Replace Stream iteration with for-loop for StorageProxy::updateCoordinatorWriteLatencyTableMetric (CASSANDRA-19676)
+ * Enforce metric naming contract if scope is used in a metric name (CASSANDRA-19619)
+ * Avoid reading of the same IndexInfo from disk many times for a large partition (CASSANDRA-19557)
  * Resolve the oldest hints just from descriptors and current writer if available (CASSANDRA-19600)
  * Optionally fail writes when SAI refuses to index a term value exceeding configured term max size (CASSANDRA-19493)
  * Vector search can restrict on clustering keys when filtering isn't required (CASSANDRA-19544)
@@ -34,6 +38,8 @@
  * Fix resource cleanup after SAI query timeouts (CASSANDRA-19177)
  * Suppress CVE-2023-6481 (CASSANDRA-19184)
 Merged from 4.1:
+ * Reduce info logging from automatic paxos repair (CASSANDRA-19445)
+ * Support legacy plain_text_auth section in credentials file removed unintentionally (CASSANDRA-19498)
  * Make queries visible to the "system_views.queries" virtual table at the coordinator level (CASSANDRA-19577)
  * Concurrent equivalent schema updates lead to unresolved disagreement (CASSANDRA-19578)
  * Fix hints delivery for a node going down repeatedly (CASSANDRA-19495)
@@ -42,6 +48,8 @@ Merged from 4.1:
  * Memoize Cassandra verion and add a backoff interval for failed schema pulls (CASSANDRA-18902)
  * Fix StackOverflowError on ALTER after many previous schema changes (CASSANDRA-19166)
 Merged from 4.0:
+ * Add timeout specifically for bootstrapping nodes (CASSANDRA-15439)
+ * Bring Redhat packge dirs/ownership/perms in line with Debian package (CASSANDRA-19565)
  * Make nodetool import congruent with the documentation by not relying on the folder structure of the imported SSTable files (CASSANDRA-19401)
  * IR may leak SSTables with pending repair when coming from streaming (CASSANDRA-19182)
  * Streaming exception race creates corrupt transaction log files that prevent restart (CASSANDRA-18736)
@@ -5681,7 +5689,7 @@ Merged from 1.0:
  * avoid recursion in leveled compaction (CASSANDRA-4587)
  * increase stack size under Java7 to 180K
  * Log(info) schema changes (CASSANDRA-4547)
- * Change nodetool setcachecapcity to manipulate global caches (CASSANDRA-4563)
+ * Change nodetool setcachecapacity to manipulate global caches (CASSANDRA-4563)
  * (cql3) fix setting compaction strategy (CASSANDRA-4597)
  * fix broken system.schema_* timestamps on system startup (CASSANDRA-4561)
  * fix wrong skip of cache saving (CASSANDRA-4533)
