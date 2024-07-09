@@ -401,21 +401,25 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 
     static final class Work
     {
-        static final Work STOP_SIGNALLED = new Work();
-        static final Work STOPPED = new Work();
-        static final Work SPINNING = new Work();
-        static final Work WORKING = new Work();
+        static final Work STOP_SIGNALLED = new Work("STOPPED_SIGNALLED");
+        static final Work STOPPED = new Work("STOPPED");
+        static final Work SPINNING = new Work("SPINNING");
+        static final Work WORKING = new Work("WORKING");
 
         final SEPExecutor assigned;
+        final String label;
 
         Work(SEPExecutor executor)
         {
+            assert(executor != null);
             this.assigned = executor;
+            this.label = "ASSIGNED";
         }
 
-        private Work()
+        private Work(final String label)
         {
             this.assigned = null;
+            this.label = label;
         }
 
         boolean canAssign(boolean self)
@@ -450,6 +454,16 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
         {
             return assigned != null;
         }
+
+        boolean isRunnableState() {
+            return isAssigned() || isWorking();
+        }
+
+        @Override
+        public String toString() {
+            return this.label;
+        }
+
     }
 
     @Override
