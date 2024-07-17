@@ -123,6 +123,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         // we add to the queue first, so that when a worker takes a task permit it can be certain there is a task available
         // this permits us to schedule threads non-spuriously; it also means work is serviced fairly
         tasks.add(task);
+        final long start = Clock.Global.nanoTime();
         logger.info("[{}] Start addTask {}", name, Clock.Global.nanoTime());
         int taskPermits;
         while (true)
@@ -149,7 +150,8 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             logger.info("[{}] No permits, maybeStartSpinningWorker() {}", name, Clock.Global.nanoTime());
             pool.maybeStartSpinningWorker();
         }
-        logger.info("[{}] End addTask() {}", name, Clock.Global.nanoTime());
+        final long end = Clock.Global.nanoTime();
+        logger.info("[{}] End addTask() {}", name, (end - start) / 1e6);
         return task;
     }
 
