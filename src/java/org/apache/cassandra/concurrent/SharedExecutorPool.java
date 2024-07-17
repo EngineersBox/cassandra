@@ -31,7 +31,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.apache.cassandra.concurrent.DebuggableTask.RunningDebuggableTask;
+import org.apache.cassandra.utils.Clock;
 
 import static org.apache.cassandra.concurrent.ExecutorFactory.Global.executorFactory;
 import static org.apache.cassandra.concurrent.SEPWorker.Work;
@@ -65,6 +69,7 @@ import static org.apache.cassandra.utils.Clock.Global.nanoTime;
 public class SharedExecutorPool
 {
     public static final SharedExecutorPool SHARED = new SharedExecutorPool("SharedPool");
+    private static final Logger logger = LoggerFactory.getLogger(SharedExecutorPool.class);
 
     // the name assigned to workers in the pool, and the id suffix
     final ThreadGroup threadGroup;
@@ -106,18 +111,35 @@ public class SharedExecutorPool
         // empty we schedule a new thread
         Map.Entry<Long, SEPWorker> e;
         while (null != (e = spinning.pollFirstEntry()) || null != (e = descheduled.pollFirstEntry()))
+        {
+            logger.info(
+                "[SEP] Attemping to schedule work to {} sleep time {} {}",
+                e.getValue().workerId,
+                e.getKey(),
+                Clock.Global.nanoTime()
+            );
             if (e.getValue().assign(work, false))
+            {
                 return;
+            }
+        }
 
         if (!work.isStop())
         {
-            SEPWorker worker = new SEPWorker(threadGroup, workerId.incrementAndGet(), work, this);
+            final long newWorkerId = workerId.incrementAndGet();
+            SEPWorker worker = new SEPWorker(threadGroup, newWorkerId, work, this);
+            logger.info(
+                "[SEP] Work not isStop(), creating worker {} with work {}",
+                newWorkerId,
+                Clock.Global.nanoTime()
+            );
             allWorkers.add(worker);
         }
     }
 
     void workerEnded(SEPWorker worker)
     {
+        logger.info("[SEP] Worker ended, removing {} {}", worker.workerId, Clock.Global.nanoTime());
         allWorkers.remove(worker);
     }
 
@@ -136,11 +158,19 @@ public class SharedExecutorPool
         final int current = spinningCount.get();
         if (current == 0 && spinningCount.compareAndSet(0, 1))
         {
+            logger.info("[SEP] No spinning workers, scheduling one {}", Clock.Global.nanoTime());
             schedule(Work.SPINNING);
         } else {
             // Workers are already spinning, but may likely be parked; unpark the first worker's thread
             Map.Entry<Long, SEPWorker> entry = spinning.pollFirstEntry();
-            if (entry != null) {
+            if (entry != null)
+            {
+                logger.info(
+                    "[SEP] Have {} spinning workers, unparking first {} {}",
+                    spinning.size(),
+                    entry.getValue().workerId,
+                    Clock.Global.nanoTime()
+                );
                 LockSupport.unpark(entry.getValue().thread);
             }
         }
