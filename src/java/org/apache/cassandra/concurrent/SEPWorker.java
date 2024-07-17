@@ -95,6 +95,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 
         SEPExecutor assigned = null;
         Runnable task = null;
+        logger.info("Start run() {}", System.nanoTime());
         try
         {
             while (true)
@@ -104,7 +105,9 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 
                 if (isSpinning() && !selfAssign())
                 {
+                    logger.info("[{}] Is spinning + cannot self assign => doWaitSpin() {}", workerId, System.nanoTime());
                     doWaitSpin();
+                    logger.info("End doWaitSpin() {}", System.nanoTime());
                     // if the pool is terminating, but we have been assigned STOP_SIGNALLED, if we do not re-check
                     // whether the pool is shutting down this thread will go to sleep and block forever
                     continue;
@@ -120,16 +123,29 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                 // we can be assigned any state from STOPPED, so loop if we don't actually have any tasks assigned
                 assigned = get().assigned;
                 if (assigned == null)
+                {
+                    logger.info("[{}] No tasks assigned {}", workerId, System.nanoTime());
                     continue;
+                }
                 if (SET_THREAD_NAME)
+                {
+                    logger.info(
+                    "[{}] Renamed thread {} => {}-{} {}",
+                    workerId,
+                    Thread.currentThread().getName(),
+                    assigned.name, workerId,
+                    System.nanoTime()
+                    );
                     Thread.currentThread().setName(assigned.name + '-' + workerId);
-
+                }
+                logger.info("[{}] Pending tasks before {} {}", workerId, assigned.tasks.size(), System.nanoTime());
                 task = assigned.tasks.poll();
                 currentTask.lazySet(task);
 
                 // if we do have tasks assigned, nobody will change our state so we can simply set it to WORKING
                 // (which is also a state that will never be interrupted externally)
                 set(Work.WORKING);
+                logger.info("[{}] Set to WORKING state {}", workerId, System.nanoTime());
                 boolean shutdown;
                 SEPExecutor.TakeTaskPermitResult status = null; // make sure set if shutdown check short circuits
                 while (true)
@@ -137,33 +153,60 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                     // before we process any task, we maybe schedule a new worker _to our executor only_; this
                     // ensures that even once all spinning threads have found work, if more work is left to be serviced
                     // and permits are available, it will be dealt with immediately.
+                    logger.info("[{}] maybeSchedule() {}", workerId, System.nanoTime());
                     assigned.maybeSchedule();
 
                     // we know there is work waiting, as we have a work permit, so poll() will always succeed
+                    logger.info("[{}] Start task.run() {}", workerId, System.nanoTime());
                     task.run();
+                    logger.info("[{}] End task.run() {}", workerId, System.nanoTime());
                     assigned.onCompletion();
                     task = null;
 
                     if (shutdown = assigned.shuttingDown)
+                    {
+                        logger.info("[{}] Shutting down {}", workerId, System.nanoTime());
                         break;
+                    }
 
                     if (TOOK_PERMIT != (status = assigned.takeTaskPermit(true)))
+                    {
+                        logger.info("[{}] Did not take permit {}", workerId, System.nanoTime());
                         break;
+                    }
 
+                    logger.info("[{}] Pending tasks after iteration: {} {}", workerId, assigned.tasks.size(), System.nanoTime());
                     task = assigned.tasks.poll();
                     currentTask.lazySet(task);
                 }
 
                 // return our work permit, and maybe signal shutdown
+                logger.info(
+                "[{}] Release task {}",
+                workerId,
+                System.nanoTime()
+                );
                 currentTask.lazySet(null);
 
                 if (status != RETURNED_WORK_PERMIT)
+                {
+                    logger.info("[{}] returnWorkPermit() {}", workerId, System.nanoTime());
                     assigned.returnWorkPermit();
+                }
 
                 if (shutdown)
                 {
+                    logger.info(
+                    "[{}] Shutdown invoked, active tasks: {} {}",
+                    workerId,
+                    assigned.getActiveTaskCount(),
+                    System.nanoTime()
+                    );
                     if (assigned.getActiveTaskCount() == 0)
+                    {
+                        logger.info("[{}] Signalled shutdown all {}", workerId, System.nanoTime());
                         assigned.shutdown.signalAll();
+                    }
                     return;
                 }
                 assigned = null;
@@ -171,7 +214,12 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 
                 // try to immediately reassign ourselves some work; if we fail, start spinning
                 if (!selfAssign())
+                {
+                    logger.info("[{}] Cannot self assign, start SPINNING {}", workerId, System.nanoTime());
                     startSpinning();
+                } else {
+                    logger.info("[{}] Self assigned {}", workerId, System.nanoTime());
+                }
             }
         }
         catch (Throwable t)
@@ -201,9 +249,12 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
         }
         finally
         {
+            logger.info("[{}] Finally released task {}", workerId, System.nanoTime());
             currentTask.lazySet(null);
+            logger.info("[{}] Marked workerEnded {}", workerId, System.nanoTime());
             pool.workerEnded(this);
         }
+        logger.info("[{}] End run() {}", workerId, System.nanoTime());
     }
 
     // try to assign this worker the provided work
@@ -270,6 +321,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     // collection at the same time
     private void startSpinning()
     {
+        logger.info("[{}] startSpinning() {}", workerId, System.nanoTime());
         assert get() == Work.WORKING;
         pool.spinningCount.incrementAndGet();
         set(Work.SPINNING);
@@ -279,9 +331,27 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     // so that any producer is safe to not spin up a worker when they see a spinning thread (invariant (1) above)
     private void stopSpinning()
     {
+        logger.info("[{}] stopSpinning() {}", workerId, System.nanoTime());
         if (pool.spinningCount.decrementAndGet() == 0)
+        {
+            logger.info(
+                "[{}] No more spinning, scheduling executor. Num: {} {}",
+                workerId,
+                pool.executors.size(),
+                System.nanoTime()
+            );
             for (SEPExecutor executor : pool.executors)
-                executor.maybeSchedule();
+            {
+                final boolean result = executor.maybeSchedule();
+                logger.info(
+                    "[{}] maybeSchedule() executor {} => {} {}",
+                    workerId,
+                    executor.name,
+                    result,
+                    System.nanoTime()
+                );
+            }
+        }
         prevStopCheck = soleSpinnerSpinTime = 0;
     }
 
@@ -309,6 +379,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
         // finish timing and grab spinningTime (before we finish timing so it is under rather than overestimated)
         long end = nanoTime();
         long spin = end - start;
+        logger.info("[{}] Worker doWaitSpin() time: {} {}", workerId, spin, System.nanoTime());
         long stopCheck = pool.stopCheck.addAndGet(spin);
         maybeStop(stopCheck, end);
         if (prevStopCheck + spin == stopCheck)

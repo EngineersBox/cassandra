@@ -20,7 +20,6 @@ package org.apache.cassandra.concurrent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -35,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.metrics.ThreadPoolMetrics;
+import org.jctools.queues.MpmcUnboundedXaddArrayQueue;
 
 import static org.apache.cassandra.concurrent.SEPExecutor.TakeTaskPermitResult.*;
 import static org.apache.cassandra.concurrent.SEPWorker.Work;
@@ -65,7 +65,8 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     final Condition shutdown = newOneTimeCondition();
 
     // TODO: see if other queue implementations might improve throughput
-    protected final ConcurrentLinkedQueue<Runnable> tasks = new ConcurrentLinkedQueue<>();
+//    protected final ConcurrentLinkedQueue<Runnable> tasks = new ConcurrentLinkedQueue<>();
+    protected final MpmcUnboundedXaddArrayQueue<Runnable> tasks = new MpmcUnboundedXaddArrayQueue<>(32);
 
     SEPExecutor(SharedExecutorPool pool, int maximumPoolSize, MaximumPoolSizeListener maximumPoolSizeListener, String jmxPath, String name)
     {
@@ -121,15 +122,20 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         // we add to the queue first, so that when a worker takes a task permit it can be certain there is a task available
         // this permits us to schedule threads non-spuriously; it also means work is serviced fairly
         tasks.add(task);
+        logger.info("[{}] Start addTask {}", name, System.nanoTime());
         int taskPermits;
         while (true)
         {
             long current = permits.get();
             taskPermits = taskPermits(current);
+            logger.info("[{}] Current task permits: {} {}", name, taskPermits, System.nanoTime());
             // because there is no difference in practical terms between the work permit being added or not (the work is already in existence)
             // we always add our permit, but block after the fact if we breached the queue limit
             if (permits.compareAndSet(current, updateTaskPermits(current, taskPermits + 1)))
+            {
+                logger.info("[{}] Added permit, new permits: {} {}", name, taskPermits + 1, System.nanoTime());
                 break;
+            }
         }
 
         if (taskPermits == 0)
@@ -139,8 +145,10 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             // spawned helper workers that would have either exhausted the available tasks or are still being spawned.
             // to avoid incurring any unnecessary signalling penalties we also do not take any work to hand to the new
             // worker, we simply start a worker in a spinning state
+            logger.info("[{}] No permits, maybeStartSpinningWorker() {}", name, System.nanoTime());
             pool.maybeStartSpinningWorker();
         }
+        logger.info("[{}] End addTask() {}", name, System.nanoTime());
         return task;
     }
 
