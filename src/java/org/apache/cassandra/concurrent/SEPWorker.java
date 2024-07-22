@@ -507,33 +507,82 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     // realtime we have spun too much and deschedule; if we get too far behind realtime, we reset to our initial offset
     private void maybeStop(long stopCheck, long now)
     {
+        final long start = Clock.Global.nanoTime();
+        logger.info("[{}] Start maybeStop({},{}) {}", workerId, stopCheck, now, start);
         long delta = now - stopCheck;
         if (delta <= 0)
         {
+            logger.info("[{}] Negative delta {}", workerId, Clock.Global.nanoTime() - start);
             // if stopCheck has caught up with present, we've been spinning too much, so if we can atomically
             // set it to the past again, we should stop a worker
             if (pool.stopCheck.compareAndSet(stopCheck, now - stopCheckInterval))
             {
+                logger.info(
+                    "[{}] CAS succeeded for stopCheck to {} {}",
+                    workerId,
+                    now - stopCheckInterval,
+                    Clock.Global.nanoTime() - start
+                );
                 // try and stop ourselves;
                 // if we've already been assigned work stop another worker
                 if (!assign(Work.STOP_SIGNALLED, true))
+                {
+                    logger.info(
+                        "[{}] Cannot assign STOP_SIGNALLED, scheduling {}",
+                        workerId,
+                        Clock.Global.nanoTime() - start
+                    );
                     pool.schedule(Work.STOP_SIGNALLED);
+                } else {
+                    logger.info("[{}] Assigned STOP_SIGNALLED {}", workerId, Clock.Global.nanoTime() - start);
+                }
+            } else {
+                logger.info(
+                    "[{}] CAS failed for stopCheck to {} {}",
+                    workerId,
+                    now - stopCheckInterval,
+                    Clock.Global.nanoTime() - start
+                );
             }
         }
         else if (soleSpinnerSpinTime > stopCheckInterval && pool.spinningCount.get() == 1)
         {
+            logger.info(
+                "[{}] Spin time greater than interval and spun only once, assigning STOP_SIGNALLED {}",
+                workerId,
+                Clock.Global.nanoTime() - start
+            );
             // permit self-stopping
             assign(Work.STOP_SIGNALLED, true);
         }
         else
         {
+            logger.info(
+                "[{}] Start resetting stopCheck as too far in past {}",
+                workerId,
+                Clock.Global.nanoTime() - start
+            );
             // if stop check has gotten too far behind present, update it so new spins can affect it
             while (delta > stopCheckInterval * 2 && !pool.stopCheck.compareAndSet(stopCheck, now - stopCheckInterval))
             {
                 stopCheck = pool.stopCheck.get();
                 delta = now - stopCheck;
             }
+            logger.info(
+                "[{}] Finished resetting stopCheck {}",
+                workerId,
+                Clock.Global.nanoTime() - start
+            );
         }
+        final long end = Clock.Global.nanoTime();
+        logger.info(
+            "[{}] End maybeStop({},{}) {} Duration: {}",
+            workerId,
+            stopCheck,
+            now,
+            end,
+            end - start
+        );
     }
 
     private boolean isSpinning()

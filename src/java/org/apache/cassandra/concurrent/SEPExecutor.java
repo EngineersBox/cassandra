@@ -151,7 +151,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             pool.maybeStartSpinningWorker();
         }
         final long end = Clock.Global.nanoTime();
-        logger.info("[{}] End addTask() Duration: {} {}", name, end - start, end);
+        logger.info("[{}] End addTask() {} Duration: {}", name, end, end - start);
         return task;
     }
 
@@ -196,11 +196,11 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
                 {
                     final long end = Clock.Global.nanoTime();
                     logger.info(
-                        "[{}] End takeTaskPermit({}) No task permits available {} {}",
+                        "[{}] End takeTaskPermit({}) No task permits available {} Duration: {}",
                         name,
                         checkForWorkPermitOvercommit,
-                        end - start,
-                        end
+                        end,
+                        end - start
                     );
                     return NONE_AVAILABLE;
                 }
@@ -212,11 +212,11 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             {
                 final long end = Clock.Global.nanoTime();
                 logger.info(
-                    "[{}] End takeTaskPermit({}) {} {}",
+                    "[{}] End takeTaskPermit({}) {} Duration: {}",
                     name,
                     checkForWorkPermitOvercommit,
-                    end - start,
-                    end
+                    end,
+                    end - start
                 );
                 return result;
             }
@@ -245,13 +245,13 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             {
                 final long end = Clock.Global.nanoTime();
                 logger.info(
-                    "[{}] End takeWorkPermit({}) Cannot take work permit workPermits {} <= 0 || taskPermits {} == 0 {} {}",
+                    "[{}] End takeWorkPermit({}) Cannot take work permit workPermits {} <= 0 || taskPermits {} == 0 {} Duration: {}",
                     name,
                     takeTaskPermit,
                     workPermits,
                     taskPermits,
-                    end - start,
-                    end
+                    end,
+                    end - start
                 );
                 return false;
             }
@@ -259,12 +259,12 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             {
                 final long end = Clock.Global.nanoTime();
                 logger.info(
-                    "[{}] End takeWorkPermit({}) Took work permit, new count: {} {} {}",
+                    "[{}] End takeWorkPermit({}) Took work permit, new count: {} {} Duration: {}",
                     name,
                     takeTaskPermit,
                     workPermits - 1,
-                    end - start,
-                    end
+                    end,
+                    end - start
                 );
                 return true;
             }
@@ -284,11 +284,11 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             {
                 final long end = Clock.Global.nanoTime();
                 logger.info(
-                    "[{}] End returnWorkPermit() New permits: {} {} {}",
+                    "[{}] End returnWorkPermit() New permits: {} {} Duration: {}",
                     name,
                     workPermits + 1,
-                    end - start,
-                    end
+                    end,
+                    end - start
                 );
                 return;
             }
@@ -329,7 +329,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             }
         }
         final long end = Clock.Global.nanoTime();
-        logger.info("[{}] End maybeExecuteImmediately() {} {}", name, end - start, start);
+        logger.info("[{}] End maybeExecuteImmediately() {} Duration: {}", name, end, end - start);
     }
 
     @Override

@@ -194,7 +194,7 @@ public class SharedExecutorPool
             }
         }
         final long end = Clock.Global.nanoTime();
-        logger.info("[SEO] End maybeStartSpinningWorker() {} {}", end - start, end);
+        logger.info("[SEP] End maybeStartSpinningWorker() {} Duration: {}", end, end - start);
     }
 
     public synchronized LocalAwareExecutorPlus newExecutor(int maxConcurrency, String jmxPath, String name)
