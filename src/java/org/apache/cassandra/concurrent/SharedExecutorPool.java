@@ -105,6 +105,8 @@ public class SharedExecutorPool
 
     void schedule(Work work)
     {
+        final long start = Clock.Global.nanoTime();
+        logger.info("[SEP] Start schedule({}) {}", work.label, start);
         // we try to hand-off our work to the spinning queue before the descheduled queue, even though we expect it to be empty
         // all we're doing here is hoping to find a worker without work to do, but it doesn't matter too much what we find;
         // we atomically set the task so even if this were a collection of all workers it would be safe, and if they are both
@@ -116,10 +118,18 @@ public class SharedExecutorPool
                 "[SEP] Attemping to schedule work to {} sleep time {} {}",
                 e.getValue().workerId,
                 e.getKey(),
-                Clock.Global.nanoTime()
+                Clock.Global.nanoTime() - start
             );
             if (e.getValue().assign(work, false))
             {
+                final long end = Clock.Global.nanoTime();
+                logger.info(
+                    "[SEP] End schedule({}) assigned work to {} {} {}",
+                    work.label,
+                    e.getValue().workerId,
+                    end - start,
+                    end
+                );
                 return;
             }
         }
@@ -131,10 +141,17 @@ public class SharedExecutorPool
             logger.info(
                 "[SEP] Work not isStop(), creating worker {} with work {}",
                 newWorkerId,
-                Clock.Global.nanoTime()
+                Clock.Global.nanoTime() - start
             );
             allWorkers.add(worker);
         }
+        final long end = Clock.Global.nanoTime();
+        logger.info(
+            "[SEP] End schedule({}) {} {}",
+            work.label,
+            end - start,
+            end
+        );
     }
 
     void workerEnded(SEPWorker worker)
@@ -153,12 +170,14 @@ public class SharedExecutorPool
 
     void maybeStartSpinningWorker()
     {
+        final long start = Clock.Global.nanoTime();
+        logger.info("[SEP] Start maybeStartSpinningWorker() {}", start);
         // in general the workers manage spinningCount directly; however if it is zero, we increment it atomically
         // ourselves to avoid starting a worker unless we have to
         final int current = spinningCount.get();
         if (current == 0 && spinningCount.compareAndSet(0, 1))
         {
-            logger.info("[SEP] No spinning workers, scheduling one {}", Clock.Global.nanoTime());
+            logger.info("[SEP] No spinning workers, scheduling one {}", Clock.Global.nanoTime() - start);
             schedule(Work.SPINNING);
         } else {
             // Workers are already spinning, but may likely be parked; unpark the first worker's thread
@@ -169,11 +188,13 @@ public class SharedExecutorPool
                     "[SEP] Have {} spinning workers, unparking first {} {}",
                     spinning.size(),
                     entry.getValue().workerId,
-                    Clock.Global.nanoTime()
+                    Clock.Global.nanoTime() - start
                 );
                 LockSupport.unpark(entry.getValue().thread);
             }
         }
+        final long end = Clock.Global.nanoTime();
+        logger.info("[SEO] End maybeStartSpinningWorker() {} {}", end - start, end);
     }
 
     public synchronized LocalAwareExecutorPlus newExecutor(int maxConcurrency, String jmxPath, String name)
@@ -185,6 +206,7 @@ public class SharedExecutorPool
     {
         SEPExecutor executor = new SEPExecutor(this, maxConcurrency, maximumPoolSizeListener, jmxPath, name);
         executors.add(executor);
+        logger.info("[SEP] Created new executor '{}' {}", name, Clock.Global.nanoTime());
         return executor;
     }
 
