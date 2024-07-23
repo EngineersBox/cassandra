@@ -1,5 +1,14 @@
-5.0-beta2
- * Refresh stale paxos commit (CASSANDRA-19617)
+5.0.1
+
+
+5.0-rc2
+
+
+5.0-rc1
+ * Move bcpkix-jdk18on to build dependencies, update to 1.78 and explicitly enumerate transitive dependencies (CASSANDRA-19739)
+ * Avoid streams in the common case for UpdateTransaction creation (CASSANDRA-19675)
+ * Only wait until native_transport_timeout for dispatcher to finish (CASSANDRA-19697)
+ * Disable chronicle analytics (CASSANDRA-19656)
  * Replace Stream iteration with for-loop for StorageProxy::updateCoordinatorWriteLatencyTableMetric (CASSANDRA-19676)
  * Enforce metric naming contract if scope is used in a metric name (CASSANDRA-19619)
  * Avoid reading of the same IndexInfo from disk many times for a large partition (CASSANDRA-19557)
@@ -38,6 +47,10 @@
  * Fix resource cleanup after SAI query timeouts (CASSANDRA-19177)
  * Suppress CVE-2023-6481 (CASSANDRA-19184)
 Merged from 4.1:
+ * Add native transport deadline, an ultimate deadline for all tasks related to a specific request (CASSANDRA-19534)
+ * Do not create a role if ALTER ROLE IF EXISTS operates on non-existing role (CASSANDRA-19749)
+ * Use OpOrder in repairIterator to ensure we don't lose memtables mid-paxos repair (Cassandra-19668)
+ * Refresh stale paxos commit (CASSANDRA-19617)
  * Reduce info logging from automatic paxos repair (CASSANDRA-19445)
  * Support legacy plain_text_auth section in credentials file removed unintentionally (CASSANDRA-19498)
  * Make queries visible to the "system_views.queries" virtual table at the coordinator level (CASSANDRA-19577)
@@ -48,6 +61,9 @@ Merged from 4.1:
  * Memoize Cassandra verion and add a backoff interval for failed schema pulls (CASSANDRA-18902)
  * Fix StackOverflowError on ALTER after many previous schema changes (CASSANDRA-19166)
 Merged from 4.0:
+ * Fix schema.cql created by a snapshot after dropping more than one column (CASSANDRA-19747)
+ * UnsupportedOperationException when reducing scope for LCS compactions (CASSANDRA-19704)
+ * Make LWT conditions behavior on frozen and non-frozen columns consistent for null column values (CASSANDRA-19637)
  * Add timeout specifically for bootstrapping nodes (CASSANDRA-15439)
  * Bring Redhat packge dirs/ownership/perms in line with Debian package (CASSANDRA-19565)
  * Make nodetool import congruent with the documentation by not relying on the folder structure of the imported SSTable files (CASSANDRA-19401)
@@ -67,6 +83,7 @@ Merged from 4.0:
 Merged from 3.11:
  * Move ClientWarn.State#warnings to a thread-safe list (CASSANDRA-19427)
 Merged from 3.0:
+ * Upgrade OWASP to 10.0.0 (CASSANDRA-19738)
  * Fix SCM URL link (CASSANDRA-19422)
  * Backport CASSANDRA-16418 to 3.x (CASSANDRA-18824)
 
