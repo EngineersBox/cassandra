@@ -295,6 +295,11 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         }
     }
 
+    /**
+     * Executes the given task immediately provided that there is an available work permit to
+     * do so. Otherwise, submits the task to be scheduled later.
+     * @param task
+     */
     @Override
     public void maybeExecuteImmediately(Runnable task)
     {

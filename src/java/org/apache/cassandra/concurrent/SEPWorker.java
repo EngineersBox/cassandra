@@ -169,9 +169,11 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                     assigned.maybeSchedule();
 
                     // we know there is work waiting, as we have a work permit, so poll() will always succeed
-                    logger.info("[{}] Start task.run() {}", workerId, Clock.Global.nanoTime() - start);
+                    final long startTask = Clock.Global.nanoTime();
+                    logger.info("[{}] Start task.run() {}", workerId, startTask - start);
                     task.run();
-                    logger.info("[{}] End task.run() {}", workerId, Clock.Global.nanoTime() - start);
+                    final long endTask = Clock.Global.nanoTime();
+                    logger.info("[{}] End task.run() {} Duration: {}", workerId, endTask - start, endTask - startTask);
                     assigned.onCompletion();
                     task = null;
 
