@@ -102,14 +102,16 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
         {
             while (true)
             {
+                final long _start = Clock.Global.nanoTime();
+                logger.info("[{}] Start run() iteration {}", workerId, _start);
                 if (pool.shuttingDown)
                     return;
 
                 if (isSpinning() && !selfAssign())
                 {
-                    logger.info("[{}] Is spinning + cannot self assign => doWaitSpin() {}", workerId, Clock.Global.nanoTime() - start);
+                    logger.info("[{}] Is spinning + cannot self assign => doWaitSpin() {}", workerId, Clock.Global.nanoTime() - _start);
                     doWaitSpin();
-                    logger.info("[{}] End doWaitSpin() {}", workerId, Clock.Global.nanoTime() - start);
+                    logger.info("[{}] End doWaitSpin() {}", workerId, Clock.Global.nanoTime() - _start);
                     // if the pool is terminating, but we have been assigned STOP_SIGNALLED, if we do not re-check
                     // whether the pool is shutting down this thread will go to sleep and block forever
                     continue;
@@ -123,20 +125,20 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                     logger.info(
                         "[{}] Stop signanlled, park worker until not-stopped {}",
                         workerId,
-                        Clock.Global.nanoTime() - start
+                        Clock.Global.nanoTime() - _start
                     );
                     while (isStopped())
                     {
                         LockSupport.park();
                     }
-                    logger.info("[{}] Finished top parking {}", workerId, Clock.Global.nanoTime() - start);
+                    logger.info("[{}] Finished top parking {}", workerId, Clock.Global.nanoTime() - _start);
                 }
 
                 // we can be assigned any state from STOPPED, so loop if we don't actually have any tasks assigned
                 assigned = get().assigned;
                 if (assigned == null)
                 {
-                    logger.info("[{}] No tasks assigned {}", workerId, Clock.Global.nanoTime() - start);
+                    logger.info("[{}] No tasks assigned {}", workerId, Clock.Global.nanoTime() - _start);
                     continue;
                 }
                 if (SET_THREAD_NAME)
@@ -146,50 +148,61 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                         workerId,
                         Thread.currentThread().getName(),
                         assigned.name, workerId,
-                        Clock.Global.nanoTime() - start
+                        Clock.Global.nanoTime() - _start
                     );
                     Thread.currentThread().setName(assigned.name + '-' + workerId);
                 }
-                logger.info("[{}] Pending tasks before {} {}", workerId, assigned.tasks.size(), Clock.Global.nanoTime() - start);
+                logger.info(
+                    "[{}] Pending tasks before {} {}",
+                    workerId,
+                    assigned.tasks.size(),
+                    Clock.Global.nanoTime() - _start
+                );
                 task = assigned.tasks.poll();
                 currentTask.lazySet(task);
 
                 // if we do have tasks assigned, nobody will change our state so we can simply set it to WORKING
                 // (which is also a state that will never be interrupted externally)
                 set(Work.WORKING);
-                logger.info("[{}] Set to WORKING state {}", workerId, Clock.Global.nanoTime() - start);
+                logger.info("[{}] Set to WORKING state {}", workerId, Clock.Global.nanoTime() - _start);
                 boolean shutdown;
                 SEPExecutor.TakeTaskPermitResult status = null; // make sure set if shutdown check short circuits
                 while (true)
                 {
+
                     // before we process any task, we maybe schedule a new worker _to our executor only_; this
                     // ensures that even once all spinning threads have found work, if more work is left to be serviced
                     // and permits are available, it will be dealt with immediately.
-                    logger.info("[{}] maybeSchedule() {}", workerId, Clock.Global.nanoTime() - start);
+                    logger.info("[{}] maybeSchedule() {}", workerId, Clock.Global.nanoTime() - _start);
                     assigned.maybeSchedule();
 
                     // we know there is work waiting, as we have a work permit, so poll() will always succeed
                     final long startTask = Clock.Global.nanoTime();
-                    logger.info("[{}] Start task.run() {}", workerId, startTask - start);
+                    logger.info("[{}] Start task.run() {}", workerId, startTask - _start);
                     task.run();
                     final long endTask = Clock.Global.nanoTime();
-                    logger.info("[{}] End task.run() {} Duration: {}", workerId, endTask - start, endTask - startTask);
+                    logger.info("[{}] End task.run() {} Duration: {}", workerId, endTask - _start, endTask - startTask);
                     assigned.onCompletion();
                     task = null;
 
                     if (shutdown = assigned.shuttingDown)
                     {
-                        logger.info("[{}] Shutting down {}", workerId, Clock.Global.nanoTime() - start);
+                        logger.info("[{}] Shutting down {}", workerId, Clock.Global.nanoTime() - _start);
                         break;
                     }
 
                     if (TOOK_PERMIT != (status = assigned.takeTaskPermit(true)))
                     {
-                        logger.info("[{}] Did not take permit {}", workerId, Clock.Global.nanoTime() - start);
+                        logger.info("[{}] Did not take permit {}", workerId, Clock.Global.nanoTime() - _start);
                         break;
                     }
 
-                    logger.info("[{}] Pending tasks after iteration: {} {}", workerId, assigned.tasks.size(), Clock.Global.nanoTime() - start);
+                    logger.info(
+                        "[{}] Pending tasks after WORKING iteration: {} {}",
+                        workerId,
+                        assigned.tasks.size(),
+                        Clock.Global.nanoTime() - _start
+                    );
                     task = assigned.tasks.poll();
                     currentTask.lazySet(task);
                 }
@@ -198,13 +211,13 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                 logger.info(
                     "[{}] Release task {}",
                     workerId,
-                    Clock.Global.nanoTime() - start
+                    Clock.Global.nanoTime() - _start
                 );
                 currentTask.lazySet(null);
 
                 if (status != RETURNED_WORK_PERMIT)
                 {
-                    logger.info("[{}] returnWorkPermit() {}", workerId, Clock.Global.nanoTime() - start);
+                    logger.info("[{}] returnWorkPermit() {}", workerId, Clock.Global.nanoTime() - _start);
                     assigned.returnWorkPermit();
                 }
 
@@ -214,11 +227,11 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                         "[{}] Shutdown invoked, active tasks: {} {}",
                         workerId,
                         assigned.getActiveTaskCount(),
-                        Clock.Global.nanoTime() - start
+                        Clock.Global.nanoTime() - _start
                     );
                     if (assigned.getActiveTaskCount() == 0)
                     {
-                        logger.info("[{}] Signalled shutdown all {}", workerId, Clock.Global.nanoTime() - start);
+                        logger.info("[{}] Signalled shutdown all {}", workerId, Clock.Global.nanoTime() - _start);
                         assigned.shutdown.signalAll();
                     }
                     final long end = Clock.Global.nanoTime();
@@ -226,7 +239,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                         "[{}] End run() {} Duration: {}",
                         workerId,
                         end,
-                        end - start
+                        end - _start
                     );
                     return;
                 }
@@ -236,11 +249,22 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                 // try to immediately reassign ourselves some work; if we fail, start spinning
                 if (!selfAssign())
                 {
-                    logger.info("[{}] Cannot self assign, start SPINNING {}", workerId, Clock.Global.nanoTime() - start);
+                    logger.info(
+                        "[{}] Cannot self assign, start SPINNING {}",
+                        workerId,
+                        Clock.Global.nanoTime() - _start
+                    );
                     startSpinning();
                 } else {
-                    logger.info("[{}] Self assigned {}", workerId, Clock.Global.nanoTime() - start);
+                    logger.info("[{}] Self assigned {}", workerId, Clock.Global.nanoTime() - _start);
                 }
+                final long end = Clock.Global.nanoTime();
+                logger.info(
+                    "[{}] End run() iteration {} Duration: {}",
+                    workerId,
+                    end,
+                    end - _start
+                );
             }
         }
         catch (Throwable t)
