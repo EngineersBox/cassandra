@@ -123,7 +123,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                 if (stop())
                 {
                     logger.info(
-                        "[{}] Stop signanlled, park worker until not-stopped {}",
+                        "[{}] Stop signalled, park worker until not-stopped {}",
                         workerId,
                         Clock.Global.nanoTime() - _start
                     );
