@@ -220,6 +220,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
                 );
                 return result;
             }
+            logger.info("[{}] Task permit CAS failed {}", name, Clock.Global.nanoTime() - start);
         }
     }
 

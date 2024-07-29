@@ -317,6 +317,9 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
             self,
             start
         );
+        // Note that this loop only performs multiple iterations when
+        // CAS on aquiring work fails. Every other case terminates the
+        // loop and the method call.
         while (state.canAssign(self))
         {
             if (!compareAndSet(state, work))
