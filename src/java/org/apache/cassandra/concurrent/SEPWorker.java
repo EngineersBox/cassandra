@@ -356,15 +356,15 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 
             // if we're currently stopped, and the new state is not a stop signal
             // (which we can immediately convert to stopped), unpark the worker
-            if (state.isStopped() && (!work.isStop() || !stop()))
-            {
-                logger.info(
-                    "[{}] Stopped and next state is not stopped, unparking {}",
-                    workerId,
-                    Clock.Global.nanoTime() - start
-                );
-                LockSupport.unpark(thread);
-            }
+//            if (state.isStopped() && (!work.isStop() || !stop()))
+//            {
+//                logger.info(
+//                    "[{}] Stopped and next state is not stopped, unparking {}",
+//                    workerId,
+//                    Clock.Global.nanoTime() - start
+//                );
+//                LockSupport.unpark(thread);
+//            }
             final long end = Clock.Global.nanoTime();
             logger.info(
                 "[{}] End assign({},{}) success {} Duration: {}",
@@ -510,7 +510,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
         Long target = start + sleep;
         if (pool.spinning.putIfAbsent(target, this) != null)
             return;
-        LockSupport.parkNanos(sleep);
+//        LockSupport.parkNanos(sleep);
 
         // remove ourselves (if haven't been already) - we should be at or near the front, so should be cheap-ish
         pool.spinning.remove(target, this);
