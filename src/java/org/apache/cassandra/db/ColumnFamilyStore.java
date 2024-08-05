@@ -90,14 +90,14 @@ import org.apache.cassandra.db.compaction.CompactionStrategyManager;
 import org.apache.cassandra.db.compaction.OperationType;
 import org.apache.cassandra.db.filter.ClusteringIndexFilter;
 import org.apache.cassandra.db.filter.DataLimits;
-import org.apache.cassandra.db.memtable.Flushing;
-import org.apache.cassandra.db.memtable.Memtable;
-import org.apache.cassandra.db.memtable.ShardBoundaries;
 import org.apache.cassandra.db.lifecycle.LifecycleNewTracker;
 import org.apache.cassandra.db.lifecycle.LifecycleTransaction;
 import org.apache.cassandra.db.lifecycle.SSTableSet;
 import org.apache.cassandra.db.lifecycle.Tracker;
 import org.apache.cassandra.db.lifecycle.View;
+import org.apache.cassandra.db.memtable.Flushing;
+import org.apache.cassandra.db.memtable.Memtable;
+import org.apache.cassandra.db.memtable.ShardBoundaries;
 import org.apache.cassandra.db.partitions.CachedPartition;
 import org.apache.cassandra.db.partitions.PartitionUpdate;
 import org.apache.cassandra.db.repair.CassandraTableRepairManager;
@@ -320,6 +320,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
     private final Directories directories;
 
     public final TableMetrics metric;
+    private final Runnable memtableMetricsReleaser;
     public volatile long sampleReadLatencyMicros;
     public volatile long additionalWriteLatencyMicros;
 
@@ -506,14 +507,11 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
 
         logger.info("Initializing {}.{}", getKeyspaceName(), name);
 
-        // Create Memtable and its metrics object only on online
-        Memtable initialMemtable = null;
-        TableMetrics.ReleasableMetric memtableMetrics = null;
-        if (DatabaseDescriptor.isDaemonInitialized())
-        {
-            initialMemtable = createMemtable(new AtomicReference<>(CommitLog.instance.getCurrentPosition()));
-            memtableMetrics = memtableFactory.createMemtableMetrics(metadata);
-        }
+        Memtable initialMemtable = DatabaseDescriptor.isDaemonInitialized() ?
+                                   createMemtable(new AtomicReference<>(CommitLog.instance.getCurrentPosition())) :
+                                   null;
+        memtableMetricsReleaser = memtableFactory.createMemtableMetricsReleaser(metadata);
+
         data = new Tracker(this, initialMemtable, loadSSTables);
 
         // Note that this needs to happen before we load the first sstables, or the global sstable tracker will not
@@ -545,7 +543,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
             indexManager.addIndex(info, true);
         }
 
-        metric = new TableMetrics(this, memtableMetrics);
+        // See CASSANDRA-16228. We need to ensure that metrics are exposed after the CFS is initialized,
+        // so the order of the following line is important and should not be moved.
+        metric = new TableMetrics(this);
 
         if (data.loadsstables)
         {
@@ -749,6 +749,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
         }
 
         // unregister metrics
+        memtableMetricsReleaser.run();
         metric.release();
     }
 
@@ -800,7 +801,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
                                        String.format("Cannot remove temporary or obsoleted files for %s due to a problem with transaction " +
                                                      "log files. Please check records with problems in the log messages above and fix them. " +
                                                      "Refer to the 3.0 upgrading instructions in NEWS.txt " +
-                                                     "for a description of transaction log files.", metadata.toString()));
+                                                     "for a description of transaction log files.", metadata));
 
         logger.trace("Further extra check for orphan sstable files for {}", metadata.name);
         for (Map.Entry<Descriptor,Set<Component>> sstableFiles : directories.sstableLister(Directories.OnTxnErr.IGNORE).list().entrySet())
@@ -2494,7 +2495,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
     @Override
     public void forceCompactionForTokenRanges(String... strings)
     {
-        CompactionManager.instance.forceCompactionForTokenRange(this, toTokenRanges(DatabaseDescriptor.getPartitioner(), strings));
+        CompactionManager.instance.forceCompactionForTokenRange(this, toTokenRanges(getPartitioner(), strings));
     }
 
     static Set<Range<Token>> toTokenRanges(IPartitioner partitioner, String... strings)
@@ -2892,6 +2893,10 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
                 {
                     throw new RuntimeException(e);
                 }
+            }
+            finally
+            {
+                logger.debug("Resuming compactions for {}", metadata.name);
             }
         }
     }
@@ -3314,13 +3319,16 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
         if (metadata == null)
             return null;
 
-        Keyspace keyspace = Keyspace.open(metadata.keyspace);
-        if (keyspace == null)
-            return null;
+        return getIfExists(metadata);
+    }
 
-        return keyspace.hasColumnFamilyStore(id)
-             ? keyspace.getColumnFamilyStore(id)
-             : null;
+    /**
+     * Returns a ColumnFamilyStore by metadata if it exists, null otherwise
+     * Differently from others, this method does not throw exception if the table does not exist.
+     */
+    public static ColumnFamilyStore getIfExists(TableMetadata table)
+    {
+        return Keyspace.openAndGetStoreIfExists(table);
     }
 
     /**
@@ -3332,7 +3340,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
         if (ksName == null || cfName == null)
             return null;
 
-        Keyspace keyspace = Keyspace.open(ksName);
+        Keyspace keyspace = Keyspace.openIfExists(ksName);
         if (keyspace == null)
             return null;
 

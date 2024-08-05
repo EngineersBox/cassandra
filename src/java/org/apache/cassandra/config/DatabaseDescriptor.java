@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.config;
 
+import java.io.IOError;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
@@ -117,6 +118,7 @@ import static org.apache.cassandra.config.CassandraRelevantProperties.ALLOCATE_T
 import static org.apache.cassandra.config.CassandraRelevantProperties.ALLOW_UNLIMITED_CONCURRENT_VALIDATIONS;
 import static org.apache.cassandra.config.CassandraRelevantProperties.AUTO_BOOTSTRAP;
 import static org.apache.cassandra.config.CassandraRelevantProperties.CONFIG_LOADER;
+import static org.apache.cassandra.config.CassandraRelevantProperties.CHRONICLE_ANALYTICS_DISABLE;
 import static org.apache.cassandra.config.CassandraRelevantProperties.DISABLE_STCS_IN_L0;
 import static org.apache.cassandra.config.CassandraRelevantProperties.INITIAL_TOKEN;
 import static org.apache.cassandra.config.CassandraRelevantProperties.IO_NETTY_TRANSPORT_ESTIMATE_SIZE_ON_SUBMIT;
@@ -155,6 +157,7 @@ public class DatabaseDescriptor
 {
     static
     {
+        CHRONICLE_ANALYTICS_DISABLE.setBoolean(true);
         // This static block covers most usages
         FBUtilities.preventIllegalAccessWarnings();
         IO_NETTY_TRANSPORT_ESTIMATE_SIZE_ON_SUBMIT.setBoolean(false);
@@ -998,6 +1001,17 @@ public class DatabaseDescriptor
             throw new ConfigurationException(String.format("Invalid value for.progress_barrier_default_consistency_level %s. Allowed values: %s",
                                                            conf.progress_barrier_default_consistency_level, progressBarrierCLsArr));
         }
+
+        if (conf.native_transport_min_backoff_on_queue_overload.toMilliseconds() <= 0)
+            throw new ConfigurationException(" be positive");
+
+        if (conf.native_transport_min_backoff_on_queue_overload.toMilliseconds() >= conf.native_transport_max_backoff_on_queue_overload.toMilliseconds())
+            throw new ConfigurationException(String.format("native_transport_min_backoff_on_queue_overload should be strictly less than native_transport_max_backoff_on_queue_overload, but %s >= %s",
+                                                           conf.native_transport_min_backoff_on_queue_overload,
+                                                           conf.native_transport_max_backoff_on_queue_overload));
+
+        if (conf.use_deterministic_table_id)
+            logger.warn("use_deterministic_table_id is no longer supported and should be removed from cassandra.yaml.");
     }
 
     @VisibleForTesting
@@ -1451,7 +1465,18 @@ public class DatabaseDescriptor
         boolean directIOSupported = false;
         try
         {
-            directIOSupported = FileUtils.getBlockSize(new File(getCommitLogLocation())) > 0;
+            String commitLogLocation = getCommitLogLocation();
+
+            if (commitLogLocation == null)
+                throw new ConfigurationException("commitlog_directory must be specified", false);
+
+            File commitLogLocationDir = new File(commitLogLocation);
+            PathUtils.createDirectoriesIfNotExists(commitLogLocationDir.toPath());
+            directIOSupported = FileUtils.getBlockSize(commitLogLocationDir) > 0;
+        }
+        catch (IOError | ConfigurationException ex)
+        {
+            throw  ex;
         }
         catch (RuntimeException e)
         {
@@ -2258,6 +2283,100 @@ public class DatabaseDescriptor
                          getTruncateRpcTimeout(unit));
     }
 
+    public static Config.CQLStartTime getCQLStartTime()
+    {
+        return conf.cql_start_time;
+    }
+
+    public static void setCQLStartTime(Config.CQLStartTime value)
+    {
+        conf.cql_start_time = value;
+    }
+
+    /**
+     * How much time the item is allowed to spend in (currently only Native) queue, compared to {@link #nativeTransportIdleTimeout()},
+     * before backpressure starts being applied.
+     *
+     * For example, setting this value to 0.5 means and having the largest of read/range/write/counter timeouts to 10 seconds
+     * means that if any item spends more than 5 seconds in the queue, backpressure will be applied to the socket associated
+     * with this queue.
+     *
+     * Set to 0 or any negative value to fully disable.
+     */
+    public static double getNativeTransportQueueMaxItemAgeThreshold()
+    {
+        return conf.native_transport_queue_max_item_age_threshold;
+    }
+
+    public static void setNativeTransportMaxQueueItemAgeThreshold(double threshold)
+    {
+        conf.native_transport_queue_max_item_age_threshold = threshold;
+    }
+
+    public static long getNativeTransportMinBackoffOnQueueOverload(TimeUnit timeUnit)
+    {
+        return conf.native_transport_min_backoff_on_queue_overload.to(timeUnit);
+    }
+
+    public static long getNativeTransportMaxBackoffOnQueueOverload(TimeUnit timeUnit)
+    {
+        return conf.native_transport_max_backoff_on_queue_overload.to(timeUnit);
+    }
+
+    public static void setNativeTransportBackoffOnQueueOverload(long minBackoffMillis,
+                                                                long maxBackoffMillis,
+                                                                TimeUnit timeUnit)
+    {
+        if (minBackoffMillis <= 0)
+            throw new IllegalArgumentException("native_transport_min_backoff_on_queue_overload should be positive");
+
+        if (minBackoffMillis >= maxBackoffMillis)
+            throw new IllegalArgumentException(String.format("native_transport_max_backoff_on_queue_overload should be greater than native_transport_min_backoff_on_queue_overload, but %s >= %s", minBackoffMillis, maxBackoffMillis));
+
+
+        conf.native_transport_min_backoff_on_queue_overload = new DurationSpec.LongMillisecondsBound(minBackoffMillis, timeUnit);
+        conf.native_transport_max_backoff_on_queue_overload = new DurationSpec.LongMillisecondsBound(maxBackoffMillis, timeUnit);
+    }
+
+    private static long native_transport_timeout_nanos_cached = -1;
+
+    public static long getNativeTransportTimeout(TimeUnit timeUnit)
+    {
+        if (timeUnit == TimeUnit.NANOSECONDS)
+        {
+            if (native_transport_timeout_nanos_cached == -1)
+                native_transport_timeout_nanos_cached = conf.native_transport_timeout.to(TimeUnit.NANOSECONDS);
+
+            return native_transport_timeout_nanos_cached;
+        }
+        return conf.native_transport_timeout.to(timeUnit);
+    }
+
+    public static void setNativeTransportTimeout(long dealine, TimeUnit timeUnit)
+    {
+        conf.native_transport_timeout = new DurationSpec.LongMillisecondsBound(dealine, timeUnit);
+    }
+
+    public static boolean getEnforceNativeDeadlineForHints()
+    {
+        return conf.enforce_native_deadline_for_hints;
+    }
+
+    public static void setEnforceNativeDeadlineForHints(boolean value)
+    {
+        conf.enforce_native_deadline_for_hints = value;
+    }
+
+    public static boolean getNativeTransportThrowOnOverload()
+    {
+        return conf.native_transport_throw_on_overload;
+    }
+
+    public static void setNativeTransportThrowOnOverload(boolean throwOnOverload)
+    {
+        conf.native_transport_throw_on_overload = throwOnOverload;
+    }
+
     public static long getPingTimeout(TimeUnit unit)
     {
         return unit.convert(getBlockForPeersTimeoutInSeconds(), TimeUnit.SECONDS);
@@ -2758,6 +2877,7 @@ public class DatabaseDescriptor
     @VisibleForTesting
     public static void setCommitLogWriteDiskAccessMode(DiskAccessMode diskAccessMode)
     {
+        commitLogWriteDiskAccessMode = diskAccessMode;
         conf.commitlog_disk_access_mode = diskAccessMode;
     }
 
@@ -3370,16 +3490,6 @@ public class DatabaseDescriptor
     public static Set<String> hintedHandoffDisabledDCs()
     {
         return conf.hinted_handoff_disabled_datacenters;
-    }
-
-    public static boolean useDeterministicTableID()
-    {
-        return conf != null && conf.use_deterministic_table_id;
-    }
-
-    public static void useDeterministicTableID(boolean value)
-    {
-        conf.use_deterministic_table_id = value;
     }
 
     public static void enableHintsForDC(String dc)
@@ -5094,26 +5204,6 @@ public class DatabaseDescriptor
         conf.progress_barrier_min_consistency_level = newLevel;
     }
 
-    public static boolean getLogOutOfTokenRangeRequests()
-    {
-        return conf.log_out_of_token_range_requests;
-    }
-
-    public static void setLogOutOfTokenRangeRequests(boolean enabled)
-    {
-        conf.log_out_of_token_range_requests = enabled;
-    }
-
-    public static boolean getRejectOutOfTokenRangeRequests()
-    {
-        return conf.reject_out_of_token_range_requests;
-    }
-
-    public static void setRejectOutOfTokenRangeRequests(boolean enabled)
-    {
-        conf.reject_out_of_token_range_requests = enabled;
-    }
-
     public static ConsistencyLevel getProgressBarrierDefaultConsistencyLevel()
     {
         return conf.progress_barrier_default_consistency_level;
@@ -5169,5 +5259,10 @@ public class DatabaseDescriptor
     public static Config.TriggersPolicy getTriggersPolicy()
     {
         return conf.triggers_policy;
+    }
+
+    public static boolean isPasswordValidatorReconfigurationEnabled()
+    {
+        return conf.password_validator_reconfiguration_enabled;
     }
 }

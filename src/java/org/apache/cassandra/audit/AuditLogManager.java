@@ -23,13 +23,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-
 import javax.annotation.Nullable;
 import javax.management.openmbean.CompositeData;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +39,7 @@ import org.apache.cassandra.cql3.PasswordObfuscator;
 import org.apache.cassandra.cql3.QueryEvents;
 import org.apache.cassandra.cql3.QueryOptions;
 import org.apache.cassandra.cql3.statements.BatchStatement;
+import org.apache.cassandra.db.guardrails.PasswordGuardrail;
 import org.apache.cassandra.exceptions.AuthenticationException;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.PreparedQueryNotFoundException;
@@ -79,7 +78,7 @@ public class AuditLogManager implements QueryEvents.Listener, AuthEvents.Listene
         }
         else
         {
-            logger.debug("Audit logging is disabled.");
+            logger.info("Audit logging is disabled.");
             auditLogger = new NoOpAuditLogger(Collections.emptyMap());
         }
 
@@ -177,6 +176,7 @@ public class AuditLogManager implements QueryEvents.Listener, AuthEvents.Listene
         IAuditLogger oldLogger = auditLogger;
         auditLogger = new NoOpAuditLogger(Collections.emptyMap());
         oldLogger.stop();
+        logger.info("Audit logging is disabled.");
     }
 
     /**
@@ -215,6 +215,7 @@ public class AuditLogManager implements QueryEvents.Listener, AuthEvents.Listene
         // ensure oldLogger's stop() is called after we swap it with new logger,
         // otherwise, we might be calling log() on the stopped logger.
         oldLogger.stop();
+        logger.info("Audit logging is enabled.");
     }
 
     private void updateAuditLogOptions(final AuditLogOptions options, final AuditLogFilter filter)
@@ -389,6 +390,10 @@ public class AuditLogManager implements QueryEvents.Listener, AuthEvents.Listene
                 if (query.toLowerCase().contains(PasswordObfuscator.PASSWORD_TOKEN))
                     return "Syntax Exception. Obscured for security reasons.";
             }
+        }
+        else if (e instanceof PasswordGuardrail.PasswordGuardrailException)
+        {
+            return ((PasswordGuardrail.PasswordGuardrailException) e).redactedMessage;
         }
 
         return PasswordObfuscator.obfuscate(e.getMessage());

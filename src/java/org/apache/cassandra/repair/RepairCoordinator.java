@@ -41,7 +41,11 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
 import org.apache.cassandra.locator.RangesAtEndpoint;
-import org.apache.cassandra.utils.*;
+import org.apache.cassandra.net.Verb;
+import org.apache.cassandra.repair.messages.FailSession;
+import org.apache.cassandra.repair.messages.RepairMessage;
+import org.apache.cassandra.repair.state.ParticipateState;
+import org.apache.cassandra.transport.Dispatcher;
 import org.apache.cassandra.utils.concurrent.Future;
 import org.apache.commons.lang3.time.DurationFormatUtils;
 import org.slf4j.Logger;
@@ -72,10 +76,16 @@ import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.service.ActiveRepairService.ParentRepairStatus;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.tcm.ClusterMetadata;
 import org.apache.cassandra.tracing.TraceKeyspace;
 import org.apache.cassandra.tracing.TraceState;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.Pair;
+import org.apache.cassandra.utils.Throwables;
+import org.apache.cassandra.utils.TimeUUID;
+import org.apache.cassandra.utils.WrappedRunnable;
 import org.apache.cassandra.utils.progress.ProgressEvent;
 import org.apache.cassandra.utils.progress.ProgressEventNotifier;
 import org.apache.cassandra.utils.progress.ProgressEventType;
@@ -211,6 +221,17 @@ public class RepairCoordinator implements Runnable, ProgressEventNotifier, Repai
             reason = error != null ? error.toString() : "Some repair failed";
         }
         state.phase.fail(reason);
+        ParticipateState p = ctx.repair().participate(state.id);
+        if (p != null)
+            p.phase.fail(reason);
+        NeighborsAndRanges neighborsAndRanges = state.getNeighborsAndRanges();
+        // this is possible if the failure happened during input processing, in which case no particpates have been notified
+        if (neighborsAndRanges != null)
+        {
+            FailSession msg = new FailSession(state.id);
+            for (InetAddressAndPort participate : neighborsAndRanges.participants)
+                RepairMessage.sendMessageWithRetries(ctx, msg, Verb.FAILED_SESSION_MSG, participate);
+        }
         String completionMessage = String.format("Repair command #%d finished with error", state.cmd);
 
         // Note we rely on the first message being the reason for the failure
@@ -360,7 +381,8 @@ public class RepairCoordinator implements Runnable, ProgressEventNotifier, Repai
         //pre-calculate output of getLocalReplicas and pass it to getNeighbors to increase performance and prevent
         //calculation multiple times
         Iterable<Range<Token>> keyspaceLocalRanges = getLocalReplicas.apply(state.keyspace).ranges();
-
+        boolean isMeta = Keyspace.open(state.keyspace).getMetadata().params.replication.isMeta();
+        boolean isCMS = ClusterMetadata.current().isCMSMember(FBUtilities.getBroadcastAddressAndPort());
         for (Range<Token> range : state.options.getRanges())
         {
             EndpointsForRange neighbors = ctx.repair().getNeighbors(state.keyspace, keyspaceLocalRanges, range,
@@ -373,6 +395,11 @@ public class RepairCoordinator implements Runnable, ProgressEventNotifier, Repai
                     logger.info("{} Found no neighbors for range {} for {} - ignoring since repairing with --ignore-unreplicated-keyspaces", state.id, range, state.keyspace);
                     continue;
                 }
+                else if (isMeta && !isCMS)
+                {
+                    logger.info("{} Repair requested for keyspace {}, which is only replicated by CMS members - ignoring", state.id, state.keyspace);
+                    continue;
+                }
                 else
                 {
                     throw RepairException.warn(String.format("Nothing to repair for %s in %s - aborting", range, state.keyspace));
@@ -382,11 +409,20 @@ public class RepairCoordinator implements Runnable, ProgressEventNotifier, Repai
             allNeighbors.addAll(neighbors.endpoints());
         }
 
-        if (state.options.ignoreUnreplicatedKeyspaces() && allNeighbors.isEmpty())
+        if (allNeighbors.isEmpty())
         {
-            throw new SkipRepairException(String.format("Nothing to repair for %s in %s - unreplicated keyspace is ignored since repair was called with --ignore-unreplicated-keyspaces",
-                                                        state.options.getRanges(),
-                                                        state.keyspace));
+            if (state.options.ignoreUnreplicatedKeyspaces())
+            {
+                throw new SkipRepairException(String.format("Nothing to repair for %s in %s - unreplicated keyspace is ignored since repair was called with --ignore-unreplicated-keyspaces",
+                                                            state.options.getRanges(),
+                                                            state.keyspace));
+            }
+            else if (isMeta && !isCMS)
+            {
+                throw new SkipRepairException(String.format("Nothing to repair for %s in %s - keypaces with MetaStrategy replication are not replicated to this node",
+                                                            state.options.getRanges(),
+                                                            state.keyspace));
+            }
         }
 
         boolean shouldExcludeDeadParticipants = state.options.isForcedRepair();
@@ -536,7 +572,7 @@ public class RepairCoordinator implements Runnable, ProgressEventNotifier, Repai
                     QueryOptions options = QueryOptions.forInternalCalls(ConsistencyLevel.ONE, Lists.newArrayList(sessionIdBytes,
                                                                                                                   tminBytes,
                                                                                                                   tmaxBytes));
-                    ResultMessage.Rows rows = statement.execute(forInternalCalls(), options, ctx.clock().nanoTime());
+                    ResultMessage.Rows rows = statement.execute(forInternalCalls(), options, new Dispatcher.RequestTime(ctx.clock().nanoTime()));
                     UntypedResultSet result = UntypedResultSet.create(rows.result);
 
                     for (UntypedResultSet.Row r : result)

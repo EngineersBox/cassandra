@@ -263,7 +263,7 @@ public abstract class LocalLog implements Closeable
         if (spec.initial == null)
             spec.initial = new ClusterMetadata(DatabaseDescriptor.getPartitioner());
         if (spec.prev == null)
-            spec.prev = new ClusterMetadata(DatabaseDescriptor.getPartitioner());
+            spec.prev = new ClusterMetadata(spec.initial.partitioner);
         assert spec.initial.epoch.is(EMPTY) || spec.initial.epoch.is(Epoch.UPGRADE_STARTUP) || spec.isReset :
         String.format(String.format("Should start with empty epoch, unless we're in upgrade or reset mode: %s (isReset: %s)", spec.initial, spec.isReset));
 
@@ -370,6 +370,8 @@ public abstract class LocalLog implements Closeable
      */
     public void append(LogState logState)
     {
+        if (logState.isEmpty())
+            return;
         logger.debug("Appending log state with snapshot to the pending buffer: {}", logState);
         // If we receive a base state (snapshot), we need to construct a synthetic ForceSnapshot transformation that will serve as
         // a base for application of the rest of the entries. If the log state contains any additional transformations that follow
@@ -403,13 +405,14 @@ public abstract class LocalLog implements Closeable
         {
             runOnce(null);
         }
-        catch (InterruptedException | TimeoutException e)
+        catch (TimeoutException e)
         {
-            throw new RuntimeException("Should not have happened, since we await uninterruptibly", e);
+            // This should not happen as no duration was specified in the call to runOnce
+            throw new RuntimeException("Timed out waiting for log follower to run", e);
         }
     }
 
-    abstract void runOnce(DurationSpec durationSpec) throws InterruptedException, TimeoutException;
+    abstract void runOnce(DurationSpec durationSpec) throws TimeoutException;
     abstract void processPending();
 
     private Entry peek()
@@ -480,7 +483,9 @@ public abstract class LocalLog implements Closeable
                     String.format("Epoch %s for %s can either force snapshot, or immediately follow %s",
                                   next.epoch, pendingEntry.transform, prev.epoch);
 
-                    if (replayComplete.get())
+                    // If replay during initialisation has completed persist to local storage unless the entry is
+                    // a synthetic ForceSnapshot which is not a replicated event but enables jumping over gaps
+                    if (replayComplete.get() && pendingEntry.transform.kind() != Transformation.Kind.FORCE_SNAPSHOT)
                         storage.append(pendingEntry.maybeUnwrapExecuted());
 
                     notifyPreCommit(prev, next, isSnapshot);
@@ -662,8 +667,11 @@ public abstract class LocalLog implements Closeable
         }
 
         @Override
-        public void runOnce(DurationSpec duration) throws InterruptedException, TimeoutException
+        public void runOnce(DurationSpec duration) throws TimeoutException
         {
+            if (executor.isTerminated())
+                throw new IllegalStateException("Global log follower has shutdown");
+
             Condition ours = Condition.newOneTimeCondition();
             for (int i = 0; i < 2; i++)
             {
@@ -676,9 +684,10 @@ public abstract class LocalLog implements Closeable
                 {
                     if (duration == null)
                     {
-                        current.awaitUninterruptibly();
+
+                        current.awaitThrowUncheckedOnInterrupt();
                     }
-                    else if (!current.await(duration.to(TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS))
+                    else if (!current.awaitThrowUncheckedOnInterrupt(duration.to(TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS))
                     {
                         throw new TimeoutException(String.format("Timed out waiting for follower to run at least once. " +
                                                                  "Pending is %s and current is now at epoch %s.",
@@ -705,7 +714,7 @@ public abstract class LocalLog implements Closeable
                 if (runnable.subscriber.compareAndSet(null, ours))
                 {
                     runnable.logNotifier.signalAll();
-                    ours.awaitUninterruptibly();
+                    ours.awaitThrowUncheckedOnInterrupt();
                     return;
                 }
             }
@@ -725,6 +734,7 @@ public abstract class LocalLog implements Closeable
             Condition condition = runnable.subscriber.get();
             if (condition != null)
                 condition.signalAll();
+
             runnable.logNotifier.signalAll();
             try
             {

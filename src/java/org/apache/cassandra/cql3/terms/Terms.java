@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import com.google.common.collect.ImmutableList;
 import org.apache.cassandra.cql3.AssignmentTestable;
 import org.apache.cassandra.cql3.ColumnSpecification;
 import org.apache.cassandra.cql3.QueryOptions;
@@ -37,25 +38,6 @@ import org.apache.cassandra.exceptions.InvalidRequestException;
 public interface Terms
 {
     /**
-     * The {@code List} returned when the list was not set.
-     */
-    @SuppressWarnings("rawtypes")
-    List UNSET_LIST = new AbstractList()
-    {
-        @Override
-        public Object get(int index)
-        {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public int size()
-        {
-            throw new UnsupportedOperationException();
-        }
-    };
-
-    /**
      * The terminals returned when they were unset.
      */
     Terminals UNSET_TERMINALS = new Terminals()
@@ -64,20 +46,20 @@ public interface Terms
         @SuppressWarnings("unchecked")
         public List<ByteBuffer> get()
         {
-            return (List<ByteBuffer>) UNSET_LIST;
+            return Term.UNSET_LIST;
         }
 
         @Override
         @SuppressWarnings("unchecked")
         public List<List<ByteBuffer>> getElements()
         {
-            return (List<List<ByteBuffer>>) UNSET_LIST;
+            return Term.UNSET_LIST;
         }
 
         @Override
         public List<Terminal> asList()
         {
-            throw new UnsupportedOperationException();
+            throw new UnsupportedOperationException("Cannot convert UNSET_TERMINALS to a list of terminals");
         }
 
         @Override
@@ -92,9 +74,9 @@ public interface Terms
         }
 
         @Override
-        public Term asSingleTerm()
+        public String toString()
         {
-            throw new UnsupportedOperationException();
+            return "UNSET";
         }
     };
 
@@ -160,6 +142,9 @@ public interface Terms
      */
     static Terms of(final List<Term> terms)
     {
+        if (terms.isEmpty())
+            return Terminals.of();
+
         boolean allTerminals = terms.stream().allMatch(Term::isTerminal);
 
         if (allTerminals)
@@ -178,19 +163,22 @@ public interface Terms
     }
 
     /**
+     * Converts these {@code Terms} into a {@code List} of {@code Term}.
+     * @return a {@code List} of {@code Term}.
+     * @throws UnsupportedOperationException if the conversion is not supported.
+     */
+    default List<? extends Term> asList()
+    {
+        throw new UnsupportedOperationException(this.getClass() + " cannot be converted in a list of Term");
+    }
+
+    /**
      * Checks if these {@code terms} knows that it contains a single {@code term}.
      * <p>
      * If the instance is a marker it will not know how many terms it represents and will return false.
      * @return {@code true} if this {@code terms} know contains a single {@code term}, {@code false} otherwise.
      */
     boolean containsSingleTerm();
-
-    /**
-     * If this {@code terms} contains a single term it will be returned otherwise an UnsupportedOperationException will be thrown.
-     * @return a single term representing the single element of this {@code terms}.
-     * @throws UnsupportedOperationException if this term does not know how many terms it contains or contains more than one term
-     */
-    Term asSingleTerm();
 
     /**
      * Adds all functions (native and user-defined) of the specified terms to the list.
@@ -210,6 +198,38 @@ public interface Terms
      */
     abstract class Raw implements AssignmentTestable
     {
+        private static final Raw EMPTY = new Raw()
+        {
+            @Override
+            public Terms prepare(String keyspace, ColumnSpecification receiver) throws InvalidRequestException
+            {
+                return Terminals.of();
+            }
+
+            @Override
+            public String getText()
+            {
+                return "";
+            }
+
+            @Override
+            public AbstractType<?> getExactTypeIfKnown(String keyspace)
+            {
+                return null;
+            }
+
+            @Override
+            public TestResult testAssignment(String keyspace, ColumnSpecification receiver)
+            {
+                return TestResult.WEAKLY_ASSIGNABLE;
+            }
+
+            @Override
+            public boolean containsBindMarkers()
+            {
+                return false;
+            }
+        };
         /**
          * This method validates this {@code Terms.Raw} is valid for the provided column
          * specification and "prepare" this {@code Terms.Raw}, returning the resulting {@link Terms}.
@@ -224,6 +244,28 @@ public interface Terms
          * @return a String representation of the raw terms that can be used when reconstructing a CQL query string.
          */
         public abstract String getText();
+
+        /**
+         * Converts these {@code Terms.Raw} into a {@code List} of {@code Term.Raw} if supported.
+         * @return a {@code List} of {@code Term.Raw}.
+         * @throws UnsupportedOperationException if the conversion is not supported.
+         */
+        public List<? extends Term.Raw> asList()
+        {
+            throw new UnsupportedOperationException(this.getClass() + " cannot be converted in a list of Term.Raw");
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return getText().hashCode();
+        }
+
+        @Override
+        public boolean equals(Object o)
+        {
+            return this == o || (o instanceof Terms.Raw && getText().equals(((Terms.Raw) o).getText()));
+        }
 
         /**
          * The type of the {@code Terms} if it can be inferred.
@@ -248,8 +290,21 @@ public interface Terms
             return getText();
         }
 
+        /**
+         * Checks if these terms are or contains bind markers.
+         * @return {@code true} if tthese terms are or contains bind markers, {@code false} otherwise.
+         */
+        public abstract boolean containsBindMarkers();
+
+        public static Raw of()
+        {
+            return EMPTY;
+        }
+
         public static Raw of(List<? extends Term.Raw> raws)
         {
+            if (raws.isEmpty())
+                return EMPTY;
             return new Raw()
             {
                 @Override
@@ -271,6 +326,11 @@ public interface Terms
                 }
 
                 @Override
+                public List<? extends Term.Raw> asList() {
+                    return raws;
+                }
+
+                @Override
                 public AbstractType<?> getExactTypeIfKnown(String keyspace)
                 {
                     return null;
@@ -281,6 +341,58 @@ public interface Terms
                 {
                     return AssignmentTestable.TestResult.WEAKLY_ASSIGNABLE;
                 }
+
+                @Override
+                public boolean containsBindMarkers()
+                {
+                    for (Term.Raw raw : raws)
+                    {
+                        if (raw.containsBindMarker())
+                            return true;
+                    }
+                    return false;
+                }
+            };
+        }
+
+        public static Raw of(Term.Raw raw)
+        {
+            return new Raw()
+            {
+                @Override
+                public Terms prepare(String keyspace, ColumnSpecification receiver) throws InvalidRequestException
+                {
+                    return Terms.of(raw.prepare(keyspace, receiver));
+                }
+
+                @Override
+                public List<? extends Term.Raw> asList() {
+                    return Collections.singletonList(raw);
+                }
+
+                @Override
+                public String getText()
+                {
+                    return raw.getText();
+                }
+
+                @Override
+                public AbstractType<?> getExactTypeIfKnown(String keyspace)
+                {
+                    return raw.getExactTypeIfKnown(keyspace);
+                }
+
+                @Override
+                public TestResult testAssignment(String keyspace, ColumnSpecification receiver)
+                {
+                    return raw.testAssignment(keyspace, receiver);
+                }
+
+                @Override
+                public boolean containsBindMarkers()
+                {
+                    return raw.containsBindMarker();
+                }
             };
         }
     }
@@ -290,6 +402,41 @@ public interface Terms
      */
     abstract class Terminals implements Terms
     {
+        /**
+         * Empty Terminals.
+         */
+        private static final Terminals EMPTY = new Terminals()
+        {
+            @Override
+            public List<ByteBuffer> get()
+            {
+                return ImmutableList.of();
+            }
+
+            @Override
+            public List<List<ByteBuffer>> getElements()
+            {
+                return ImmutableList.of();
+            }
+
+            @Override
+            public List<Terminal> asList()
+            {
+                return ImmutableList.of();
+            }
+
+            @Override
+            public void addFunctionsTo(List<Function> functions)
+            {
+
+            }
+
+            @Override
+            public boolean containsSingleTerm()
+            {
+                return false;
+            }
+        };
         @Override
         public void collectMarkerSpecification(VariableSpecifications boundNames) {}
 
@@ -328,6 +475,15 @@ public interface Terms
          * @return a {@code List} of {@code Term.Terminal}.
          */
         public abstract List<Term.Terminal> asList();
+
+        /**
+         * Returns an empty {@code Terminals}.
+         * @return an empty {@code Terminals}.
+         */
+        public static Terminals of()
+        {
+            return EMPTY;
+        }
 
         /**
          * Converts a {@code Terminal} into a {@code Terminals}.
@@ -370,9 +526,9 @@ public interface Terms
                 }
 
                 @Override
-                public Term asSingleTerm()
+                public String toString()
                 {
-                    return terminal;
+                    return terminal.toString();
                 }
             };
         }
@@ -426,11 +582,9 @@ public interface Terms
                 }
 
                 @Override
-                public Terminal asSingleTerm()
+                public String toString()
                 {
-                    if (!containsSingleTerm())
-                        throw new UnsupportedOperationException("This terms content cannot be converted in a single term");
-                    return terminals.get(0);
+                    return terminals.stream().map(Objects::toString).collect(Collectors.joining(", ", "(", ")"));
                 }
             };
         }
@@ -476,15 +630,20 @@ public interface Terms
                 }
 
                 @Override
+                public List<? extends Term> asList() {
+                    return Collections.singletonList(term);
+                }
+
+                @Override
                 public boolean containsSingleTerm()
                 {
                     return true;
                 }
 
                 @Override
-                public Term.NonTerminal asSingleTerm()
+                public String toString()
                 {
-                    return term;
+                    return term.toString();
                 }
             };
         }
@@ -549,17 +708,20 @@ public interface Terms
                 }
 
                 @Override
+                public List<? extends Term> asList() {
+                    return terms;
+                }
+
+                @Override
                 public boolean containsSingleTerm()
                 {
                     return terms.size() == 1;
                 }
 
                 @Override
-                public Term asSingleTerm()
+                public String toString()
                 {
-                    if (!containsSingleTerm())
-                        throw new UnsupportedOperationException("This Terms cannot be converted in a single Term");
-                    return terms.get(0);
+                    return terms.stream().map(Objects::toString).collect(Collectors.joining(", ", "(", ")"));
                 }
             };
         }

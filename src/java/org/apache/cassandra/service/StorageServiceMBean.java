@@ -668,7 +668,8 @@ public interface StorageServiceMBean extends NotificationEmitter
     // to determine if initialization has completed
     public boolean isInitialized();
 
-    public void stopNativeTransport();
+    @Deprecated(since = "5.0") public default void stopNativeTransport() { stopNativeTransport(false); }
+    public void stopNativeTransport(boolean force);
     public void startNativeTransport();
     public boolean isNativeTransportRunning();
     public void enableNativeTransportOldProtocolVersions();
@@ -806,6 +807,7 @@ public interface StorageServiceMBean extends NotificationEmitter
     @Deprecated(since = "4.1")
     public int getCompactionThroughputMbPerSec();
     public void setCompactionThroughputMbPerSec(int value);
+    Map<String, String> getCurrentCompactionThroughputMebibytesPerSec();
 
     public int getBatchlogReplayThrottleInKB();
     public void setBatchlogReplayThrottleInKB(int value);
@@ -1267,4 +1269,20 @@ public interface StorageServiceMBean extends NotificationEmitter
 
     public void setSkipStreamDiskSpaceCheck(boolean value);
     public boolean getSkipStreamDiskSpaceCheck();
+
+    double getNativeTransportQueueMaxItemAgeThreshold();
+    void setNativeTransportQueueMaxItemAgeThreshold(double threshold);
+
+    long getNativeTransportMinBackoffOnQueueOverloadInMillis();
+    long getNativeTransportMaxBackoffOnQueueOverloadInMillis();
+    void setNativeTransportBackoffOnQueueOverloadInMillis(long min, long max);
+
+    boolean getNativeTransportThrowOnOverload();
+    void setNativeTransportThrowOnOverload(boolean throwOnOverload);
+
+    long getNativeTransportTimeoutMillis();
+    void setNativeTransportTimeoutMillis(long deadlineMillis);
+
+    boolean getEnforceNativeDeadlineForHints();
+    void setEnforceNativeDeadlineForHints(boolean value);
 }

@@ -1354,9 +1354,9 @@ public class NodeProbe implements AutoCloseable
         }
     }
 
-    public void stopNativeTransport()
+    public void stopNativeTransport(boolean force)
     {
-        ssProxy.stopNativeTransport();
+        ssProxy.stopNativeTransport(force);
     }
 
     public void startNativeTransport()
@@ -1424,6 +1424,11 @@ public class NodeProbe implements AutoCloseable
     public long getCompactionThroughputBytes()
     {
         return ssProxy.getCompactionThroughtputBytesPerSec();
+    }
+
+    public Map<String, String> getCurrentCompactionThroughputMiBPerSec()
+    {
+        return ssProxy.getCurrentCompactionThroughputMebibytesPerSec();
     }
 
     public void setBatchlogReplayThrottle(int value)

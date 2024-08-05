@@ -125,6 +125,7 @@ import org.apache.cassandra.utils.concurrent.Future;
 import static java.lang.String.format;
 import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonMap;
+import static java.util.concurrent.TimeUnit.MICROSECONDS;
 import static org.apache.cassandra.config.Config.PaxosStatePurging.legacy;
 import static org.apache.cassandra.config.DatabaseDescriptor.paxosStatePurging;
 import static org.apache.cassandra.cql3.QueryProcessor.executeInternal;
@@ -500,7 +501,6 @@ public final class SystemKeyspace
                                                         "ClusterMetadata snapshots",
                                                         "CREATE TABLE IF NOT EXISTS %s (" +
                                                         "epoch bigint PRIMARY KEY," +
-                                                        "period bigint," +
                                                         "snapshot blob)")
                                                   .partitioner(MetaStrategy.partitioner)
                                                   .build();
@@ -1363,6 +1363,8 @@ public final class SystemKeyspace
 
     /**
      * Load the current paxos state for the table and key
+     *
+     * NOTE: nowInSec is typically provided as zero, and should not be assumed to be definitive, as the cache may apply different nowInSec filters
      */
     public static PaxosState.Snapshot loadPaxosState(DecoratedKey partitionKey, TableMetadata metadata, long nowInSec)
     {
@@ -1374,14 +1376,38 @@ public final class SystemKeyspace
             return new PaxosState.Snapshot(Ballot.none(), Ballot.none(), null, noneCommitted);
         }
 
+        long purgeBefore = 0;
+        long overrideTtlSeconds = 0;
+        switch (paxosStatePurging())
+        {
+            default: throw new AssertionError();
+            case legacy:
+            case gc_grace:
+                overrideTtlSeconds = metadata.params.gcGraceSeconds;
+                if (nowInSec > 0)
+                    purgeBefore = TimeUnit.SECONDS.toMicros(nowInSec - overrideTtlSeconds);
+                break;
+
+            case repaired:
+                ColumnFamilyStore cfs = Keyspace.openAndGetStoreIfExists(metadata);
+                if (cfs != null)
+                {
+                    long paxosPurgeGraceMicros = DatabaseDescriptor.getPaxosPurgeGrace(MICROSECONDS);
+                    purgeBefore = cfs.getPaxosRepairLowBound(partitionKey).uuidTimestamp() - paxosPurgeGraceMicros;
+                }
+        }
+
+
         Row row = results.get(0);
 
         Ballot promisedWrite = PaxosRows.getWritePromise(row);
+        if (promisedWrite.uuidTimestamp() < purgeBefore) promisedWrite = Ballot.none();
         Ballot promised = latest(promisedWrite, PaxosRows.getPromise(row));
+        if (promised.uuidTimestamp() < purgeBefore) promised = Ballot.none();
 
         // either we have both a recently accepted ballot and update or we have neither
-        Accepted accepted = PaxosRows.getAccepted(row);
-        Committed committed = PaxosRows.getCommitted(metadata, partitionKey, row);
+        Accepted accepted = PaxosRows.getAccepted(row, purgeBefore, overrideTtlSeconds);
+        Committed committed = PaxosRows.getCommitted(metadata, partitionKey, row, purgeBefore, overrideTtlSeconds);
         // fix a race with TTL/deletion resolution, where TTL expires after equal deletion is inserted; TTL wins the resolution, and is read using an old ballot's nowInSec
         if (accepted != null && !accepted.isAfter(committed))
             accepted = null;
@@ -1523,16 +1549,16 @@ public final class SystemKeyspace
     public static PaxosRepairHistory loadPaxosRepairHistory(String keyspace, String table)
     {
         if (SchemaConstants.LOCAL_SYSTEM_KEYSPACE_NAMES.contains(keyspace))
-            return PaxosRepairHistory.EMPTY;
+            return PaxosRepairHistory.empty(keyspace, table);
 
         UntypedResultSet results = executeInternal(String.format("SELECT * FROM system.%s WHERE keyspace_name=? AND table_name=?", PAXOS_REPAIR_HISTORY), keyspace, table);
         if (results.isEmpty())
-            return PaxosRepairHistory.EMPTY;
+            return PaxosRepairHistory.empty(keyspace, table);
 
         UntypedResultSet.Row row = Iterables.getOnlyElement(results);
         List<ByteBuffer> points = row.getList("points", BytesType.instance);
 
-        return PaxosRepairHistory.fromTupleBufferList(points);
+        return PaxosRepairHistory.fromTupleBufferList(keyspace, table, points);
     }
 
     /**

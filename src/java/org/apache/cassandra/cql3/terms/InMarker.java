@@ -115,9 +115,9 @@ public final class InMarker extends Terms.NonTerminals
     }
 
     @Override
-    public Term asSingleTerm()
+    public String toString()
     {
-        throw new UnsupportedOperationException();
+        return "?";
     }
 
     /**
@@ -157,6 +157,12 @@ public final class InMarker extends Terms.NonTerminals
         public String getText()
         {
             return "?";
+        }
+
+        @Override
+        public boolean containsBindMarkers()
+        {
+            return true;
         }
 
         private static ColumnSpecification makeInReceiver(ColumnSpecification receiver)

@@ -383,7 +383,8 @@ class Shell(cmd.Cmd):
         if extra != -1:
             baseversion = baseversion[0:extra]
         if baseversion != build_version:
-            print("WARNING: cqlsh was built against {}, but this server is {}.  All features may not work!".format(build_version, baseversion))
+            print("WARNING: cqlsh was built against {}, but this server is {}.  All features may not work!"
+                  .format(build_version, baseversion))  # ToDo: use file=sys.stderr)
 
     @property
     def batch_mode(self):
@@ -540,7 +541,7 @@ class Shell(cmd.Cmd):
             ksname = self.current_keyspace
         ksmeta = self.get_keyspace_meta(ksname)
         if tablename not in ksmeta.tables:
-            if ksname == 'system_auth' and tablename in ['roles', 'role_permissions']:
+            if ksname == 'system_auth' and tablename in ['roles', 'role_permissions', 'generated_password']:
                 self.get_fake_auth_table_meta(ksname, tablename)
             else:
                 raise ColumnFamilyNotFound("Column family {} not found".format(tablename))
@@ -563,6 +564,10 @@ class Shell(cmd.Cmd):
             table_meta.columns['role'] = ColumnMetadata(table_meta, 'role', cassandra.cqltypes.UTF8Type)
             table_meta.columns['resource'] = ColumnMetadata(table_meta, 'resource', cassandra.cqltypes.UTF8Type)
             table_meta.columns['permission'] = ColumnMetadata(table_meta, 'permission', cassandra.cqltypes.UTF8Type)
+        elif tablename == 'generated_password':
+            ks_meta = KeyspaceMetadata(ksname, True, None, None)
+            table_meta = TableMetadata(ks_meta, 'generated_password')
+            table_meta.columns['generated_password'] = ColumnMetadata(table_meta, 'generated_password', cassandra.cqltypes.UTF8Type)
         else:
             raise ColumnFamilyNotFound("Column family {} not found".format(tablename))
 
@@ -931,6 +936,10 @@ class Shell(cmd.Cmd):
             self.print_result(result, self.get_table_meta('system_auth', 'roles'))
         elif statement.query_string.lower().startswith("list"):
             self.print_result(result, self.get_table_meta('system_auth', 'role_permissions'))
+        elif statement.query_string.lower().startswith("create user") or statement.query_string.lower().startswith("create role"):
+            self.print_result(result, self.get_table_meta('system_auth', 'generated_password'))
+        elif statement.query_string.lower().startswith("alter user") or statement.query_string.lower().startswith("alter role"):
+            self.print_result(result, self.get_table_meta('system_auth', 'generated_password'))
         elif result:
             # CAS INSERT/UPDATE
             self.writeresult("")
@@ -2073,7 +2082,7 @@ def read_options(cmdlineargs, parser, config_file, cql_dir, environment=os.envir
             credentials.read(options.credentials)
 
         # use the username from credentials file but fallback to cqlshrc if username is absent from the command line parameters
-        options.username = username_from_cqlshrc
+        options.username = option_with_default(credentials.get, 'plain_text_auth', 'username', username_from_cqlshrc)
 
     if not options.password:
         rawcredentials = configparser.RawConfigParser()
@@ -2082,7 +2091,6 @@ def read_options(cmdlineargs, parser, config_file, cql_dir, environment=os.envir
 
         # handling password in the same way as username, priority cli > credentials > cqlshrc
         options.password = option_with_default(rawcredentials.get, 'plain_text_auth', 'password', password_from_cqlshrc)
-        options.password = password_from_cqlshrc
     elif not options.insecure_password_without_warning:
         print("\nWarning: Using a password on the command line interface can be insecure."
               "\nRecommendation: use the credentials file to securely provide the password.\n", file=sys.stderr)

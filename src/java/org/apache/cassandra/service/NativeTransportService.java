@@ -102,8 +102,13 @@ public class NativeTransportService
      */
     public void stop()
     {
+        stop(false);
+    }
+
+    public void stop(boolean force)
+    {
         if (server != null)
-            server.stop();
+            server.stop(force);
     }
 
     /**
@@ -112,6 +117,7 @@ public class NativeTransportService
     public void destroy()
     {
         stop();
+        ClientMetrics.instance.release();
         server = null;
 
         // shutdown executors used by netty for native transport server

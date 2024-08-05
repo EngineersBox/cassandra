@@ -358,9 +358,9 @@ public class SchemaCQLHelperTest extends CQLTester
 
         ColumnFamilyStore cfs = Keyspace.open(keyspace).getColumnFamilyStore(table);
 
-        assertEquals(ImmutableList.of("CREATE INDEX \"indexName\" ON cql_test_keyspace_3.test_table_3 (values(reg1));",
-                                      "CREATE INDEX \"indexName2\" ON cql_test_keyspace_3.test_table_3 (keys(reg1));",
-                                      "CREATE INDEX \"indexName3\" ON cql_test_keyspace_3.test_table_3 (entries(reg1));",
+        assertEquals(ImmutableList.of("CREATE INDEX \"indexName\" ON cql_test_keyspace_3.test_table_3 (values(reg1)) USING 'legacy_local_table';",
+                                      "CREATE INDEX \"indexName2\" ON cql_test_keyspace_3.test_table_3 (keys(reg1)) USING 'legacy_local_table';",
+                                      "CREATE INDEX \"indexName3\" ON cql_test_keyspace_3.test_table_3 (entries(reg1)) USING 'legacy_local_table';",
                                       "CREATE CUSTOM INDEX \"indexName4\" ON cql_test_keyspace_3.test_table_3 (entries(reg1)) USING 'org.apache.cassandra.index.sasi.SASIIndex';",
                                       "CREATE CUSTOM INDEX \"indexName5\" ON cql_test_keyspace_3.test_table_3 (entries(reg1)) USING 'org.apache.cassandra.index.sasi.SASIIndex' WITH OPTIONS = {'is_literal': 'false'};"),
                      SchemaCQLHelper.getIndexesAsCQL(cfs.metadata(), false).collect(Collectors.toList()));
@@ -442,13 +442,99 @@ public class SchemaCQLHelperTest extends CQLTester
         assertThat(schema, containsString(
             "CREATE " + (isIndexLegacy ? "" : "CUSTOM ") +
             "INDEX IF NOT EXISTS " + tableName + "_reg2_idx ON " + keyspace() + '.' + tableName + " (reg2)" +
-            (isIndexLegacy ? "" : " USING '" + DatabaseDescriptor.getDefaultSecondaryIndex() + "'") + ";"));
+            (" USING '" + (isIndexLegacy ? CassandraIndex.NAME : DatabaseDescriptor.getDefaultSecondaryIndex()) + "'") + ";"));
 
         JsonNode manifest = JsonUtils.JSON_OBJECT_MAPPER.readTree(cfs.getDirectories().getSnapshotManifestFile(SNAPSHOT).toJavaIOFile());
         JsonNode files = manifest.get("files");
         // two files, the second is index
         Assert.assertTrue(files.isArray());
         Assert.assertEquals(isIndexLegacy ? 2 : 1, files.size());
+    }
+
+    @Test
+    public void testSnapshotWithDroppedColumnsWithoutReAdding() throws Throwable
+    {
+        String tableName = createTable("CREATE TABLE IF NOT EXISTS %s (" +
+                                       "pk1 varint," +
+                                       "pk2 ascii," +
+                                       "ck1 varint," +
+                                       "ck2 varint," +
+                                       "reg1 int," +
+                                       "reg2 int," +
+                                       "reg3 int," +
+                                       "PRIMARY KEY ((pk1, pk2), ck1, ck2)) WITH " +
+                                       "CLUSTERING ORDER BY (ck1 ASC, ck2 DESC);");
+
+        alterTable("ALTER TABLE %s DROP reg2 USING TIMESTAMP 10000;");
+        alterTable("ALTER TABLE %s DROP reg3 USING TIMESTAMP 10000;");
+
+        for (int i = 0; i < 10; i++)
+            execute("INSERT INTO %s (pk1, pk2, ck1, ck2, reg1) VALUES (?, ?, ?, ?, ?)", i, i + 1, i + 2, i + 3, null);
+
+        ColumnFamilyStore cfs = Keyspace.open(keyspace()).getColumnFamilyStore(tableName);
+        cfs.snapshot(SNAPSHOT);
+
+        String schema = Files.toString(cfs.getDirectories().getSnapshotSchemaFile(SNAPSHOT).toJavaIOFile(), Charset.defaultCharset());
+        schema = schema.substring(schema.indexOf("CREATE TABLE")); // trim to ensure order
+        String expected = "CREATE TABLE IF NOT EXISTS " + keyspace() + "." + tableName + " (\n" +
+                          "    pk1 varint,\n" +
+                          "    pk2 ascii,\n" +
+                          "    ck1 varint,\n" +
+                          "    ck2 varint,\n" +
+                          "    reg1 int,\n" +
+                          "    reg3 int,\n" +
+                          "    reg2 int,\n" +
+                          "    PRIMARY KEY ((pk1, pk2), ck1, ck2)\n" +
+                          ") WITH ID = " + cfs.metadata.id + "\n" +
+                          "    AND CLUSTERING ORDER BY (ck1 ASC, ck2 DESC)";
+
+        assertThat(schema,
+                   allOf(startsWith(expected),
+                         containsString("ALTER TABLE " + keyspace() + "." + tableName + " DROP reg2 USING TIMESTAMP 10000;"),
+                         containsString("ALTER TABLE " + keyspace() + "." + tableName + " DROP reg3 USING TIMESTAMP 10000;")));
+
+        JsonNode manifest = JsonUtils.JSON_OBJECT_MAPPER.readTree(cfs.getDirectories().getSnapshotManifestFile(SNAPSHOT).toJavaIOFile());
+        JsonNode files = manifest.get("files");
+        Assert.assertTrue(files.isArray());
+        Assert.assertEquals(1, files.size());
+    }
+
+    @Test
+    public void testSnapshotWithDroppedColumnsWithoutReAddingOnSingleKeyTable() throws Throwable
+    {
+        String tableName = createTable("CREATE TABLE IF NOT EXISTS %s (" +
+                                       "pk1 varint PRIMARY KEY," +
+                                       "reg1 int," +
+                                       "reg2 int," +
+                                       "reg3 int);");
+
+        alterTable("ALTER TABLE %s DROP reg2 USING TIMESTAMP 10000;");
+        alterTable("ALTER TABLE %s DROP reg3 USING TIMESTAMP 10000;");
+
+        for (int i = 0; i < 10; i++)
+            execute("INSERT INTO %s (pk1, reg1) VALUES (?, ?)", i, i + 1);
+
+        ColumnFamilyStore cfs = Keyspace.open(keyspace()).getColumnFamilyStore(tableName);
+        cfs.snapshot(SNAPSHOT);
+
+        String schema = Files.toString(cfs.getDirectories().getSnapshotSchemaFile(SNAPSHOT).toJavaIOFile(), Charset.defaultCharset());
+        schema = schema.substring(schema.indexOf("CREATE TABLE")); // trim to ensure order
+        String expected = "CREATE TABLE IF NOT EXISTS " + keyspace() + "." + tableName + " (\n" +
+                          "    pk1 varint PRIMARY KEY,\n" +
+                          "    reg1 int,\n" +
+                          "    reg3 int,\n" +
+                          "    reg2 int\n" +
+                          ") WITH ID = " + cfs.metadata.id + "\n";
+
+        assertThat(schema,
+                   allOf(startsWith(expected),
+                         containsString("ALTER TABLE " + keyspace() + "." + tableName + " DROP reg2 USING TIMESTAMP 10000;"),
+                         containsString("ALTER TABLE " + keyspace() + "." + tableName + " DROP reg3 USING TIMESTAMP 10000;")));
+
+        JsonNode manifest = JsonUtils.JSON_OBJECT_MAPPER.readTree(cfs.getDirectories().getSnapshotManifestFile(SNAPSHOT).toJavaIOFile());
+        JsonNode files = manifest.get("files");
+        Assert.assertTrue(files.isArray());
+        Assert.assertEquals(1, files.size());
     }
 
     @Test

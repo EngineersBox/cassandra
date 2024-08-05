@@ -149,6 +149,12 @@ public class Keyspace
         return ks;
     }
 
+    public static Keyspace openIfExists(String keyspaceName)
+    {
+        assert initialized || SchemaConstants.isLocalSystemKeyspace(keyspaceName) : "Initialized: " + initialized;
+        return Schema.instance.getKeyspaceInstance(keyspaceName);
+    }
+
     // to only be used by org.apache.cassandra.tools.Standalone* classes
     public static Keyspace openWithoutSSTables(String keyspaceName)
     {
@@ -158,6 +164,14 @@ public class Keyspace
     public static ColumnFamilyStore openAndGetStore(TableMetadata table)
     {
         return open(table.keyspace).getColumnFamilyStore(table.id);
+    }
+
+    public static ColumnFamilyStore openAndGetStoreIfExists(TableMetadata table)
+    {
+        Keyspace keyspace = open(table.keyspace);
+        if (keyspace == null)
+            return null;
+        return keyspace.getIfExists(table.id);
     }
 
     /**
@@ -200,6 +214,11 @@ public class Keyspace
         if (cfs == null)
             throw new IllegalArgumentException(String.format("Unknown CF %s %s", id, columnFamilyStores));
         return cfs;
+    }
+
+    public ColumnFamilyStore getIfExists(TableId id)
+    {
+        return columnFamilyStores.get(id);
     }
 
     public boolean hasColumnFamilyStore(TableId id)

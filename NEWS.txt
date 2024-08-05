@@ -84,6 +84,10 @@ New features
     - Authentication mode is exposed in system_views.clients table, nodetool clientstats and ClientMetrics 
       to help operators identify which authentication modes are being used. nodetool clientstats introduces --verbose flag 
       behind which this information is visible.
+    - CEP-24 - Password validation / generation. When built-in 'password_validator' guardrail is enabled, it will
+      generate a password of configured password strength policy upon role creation or alteration
+      when 'GENERATED PASSWORD' clause is used. Character sets supported are: English, Cyrillic, modern Cyrillic,
+      German, Polish and Czech.
 
 
 Upgrading
@@ -149,6 +153,7 @@ Upgrading
 
 Deprecation
 -----------
+    - `use_deterministic_table_id` is no longer supported and should be removed from cassandra.yaml. Table IDs may still be supplied explicitly on CREATE.
 
 
 5.0
@@ -361,6 +366,7 @@ Deprecation
       in a future release. A single native port can be used for both encrypted and unencrypted traffic; see CASSANDRA-10559.
       Cluster hosts running with dual native ports were not correctly identified in the system.peers tables and server-sent EVENTs,
       causing clients that encrypt traffic to fail to maintain correct connection pools. For more information, see CASSANDRA-19392.
+    - Deprecated `use_deterministic_table_id` in cassandra.yaml. Table IDs may still be supplied explicitly on CREATE.
 
 4.1
 ===
