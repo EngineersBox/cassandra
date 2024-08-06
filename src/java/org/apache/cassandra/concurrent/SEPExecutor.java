@@ -123,19 +123,19 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         // we add to the queue first, so that when a worker takes a task permit it can be certain there is a task available
         // this permits us to schedule threads non-spuriously; it also means work is serviced fairly
         tasks.add(task);
-        final long start = Clock.Global.nanoTime();
-        logger.info("[{}] Start addTask {}", name, start);
+//        final long start = Clock.Global.nanoTime();
+//        logger.info("[{}] Start addTask {}", name, start);
         int taskPermits;
         while (true)
         {
             long current = permits.get();
             taskPermits = taskPermits(current);
-            logger.info("[{}] Current task permits: {} {}", name, taskPermits, Clock.Global.nanoTime() - start);
+//            logger.info("[{}] Current task permits: {} {}", name, taskPermits, Clock.Global.nanoTime() - start);
             // because there is no difference in practical terms between the work permit being added or not (the work is already in existence)
             // we always add our permit, but block after the fact if we breached the queue limit
             if (permits.compareAndSet(current, updateTaskPermits(current, taskPermits + 1)))
             {
-                logger.info("[{}] Added permit, new permits: {} {}", name, taskPermits + 1, Clock.Global.nanoTime() - start);
+//                logger.info("[{}] Added permit, new permits: {} {}", name, taskPermits + 1, Clock.Global.nanoTime() - start);
                 break;
             }
         }
@@ -147,11 +147,11 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             // spawned helper workers that would have either exhausted the available tasks or are still being spawned.
             // to avoid incurring any unnecessary signalling penalties we also do not take any work to hand to the new
             // worker, we simply start a worker in a spinning state
-            logger.info("[{}] No permits, maybeStartSpinningWorker() {}", name, Clock.Global.nanoTime() - start);
+//            logger.info("[{}] No permits, maybeStartSpinningWorker() {}", name, Clock.Global.nanoTime() - start);
             pool.maybeStartSpinningWorker();
         }
-        final long end = Clock.Global.nanoTime();
-        logger.info("[{}] End addTask() {} Duration: {}", name, end, end - start);
+//        final long end = Clock.Global.nanoTime();
+//        logger.info("[{}] End addTask() {} Duration: {}", name, end, end - start);
         return task;
     }
 
@@ -167,15 +167,15 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     TakeTaskPermitResult takeTaskPermit(boolean checkForWorkPermitOvercommit)
     {
         TakeTaskPermitResult result;
-        final long start = Clock.Global.nanoTime();
-        logger.info("[{}] Start takeTaskPermit({}) {}", name, checkForWorkPermitOvercommit, start);
+//        final long start = Clock.Global.nanoTime();
+//        logger.info("[{}] Start takeTaskPermit({}) {}", name, checkForWorkPermitOvercommit, start);
         while (true)
         {
             long current = permits.get();
             long updated;
             int workPermits = workPermits(current);
             int taskPermits = taskPermits(current);
-            logger.info("[{}] Work permits: {} Task permits: {} {}", name, workPermits, taskPermits, Clock.Global.nanoTime() - start);
+//            logger.info("[{}] Work permits: {} Task permits: {} {}", name, workPermits, taskPermits, Clock.Global.nanoTime() - start);
             if (workPermits < 0 && checkForWorkPermitOvercommit)
             {
                 // Work permits are negative when the pool is reducing in size.  Atomically
@@ -183,90 +183,90 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
                 // exiting.  On conflicting update, recheck.
                 result = RETURNED_WORK_PERMIT;
                 updated = updateWorkPermits(current, workPermits + 1);
-                logger.info(
-                    "[{}] Negative work permits (reducing pool size) took work permit, new count: {} {}",
-                    name,
-                    workPermits + 1,
-                    Clock.Global.nanoTime() - start
-                );
+//                logger.info(
+//                    "[{}] Negative work permits (reducing pool size) took work permit, new count: {} {}",
+//                    name,
+//                    workPermits + 1,
+//                    Clock.Global.nanoTime() - start
+//                );
             }
             else
             {
                 if (taskPermits == 0)
                 {
                     final long end = Clock.Global.nanoTime();
-                    logger.info(
-                        "[{}] End takeTaskPermit({}) No task permits available {} Duration: {}",
-                        name,
-                        checkForWorkPermitOvercommit,
-                        end,
-                        end - start
-                    );
+//                    logger.info(
+//                        "[{}] End takeTaskPermit({}) No task permits available {} Duration: {}",
+//                        name,
+//                        checkForWorkPermitOvercommit,
+//                        end,
+//                        end - start
+//                    );
                     return NONE_AVAILABLE;
                 }
                 result = TOOK_PERMIT;
                 updated = updateTaskPermits(current, taskPermits - 1);
-                logger.info("[{}] Took task permit, new count: {} {}", name, taskPermits - 1, Clock.Global.nanoTime() - start);
+//                logger.info("[{}] Took task permit, new count: {} {}", name, taskPermits - 1, Clock.Global.nanoTime() - start);
             }
             if (permits.compareAndSet(current, updated))
             {
-                final long end = Clock.Global.nanoTime();
-                logger.info(
-                    "[{}] End takeTaskPermit({}) {} Duration: {}",
-                    name,
-                    checkForWorkPermitOvercommit,
-                    end,
-                    end - start
-                );
+//                final long end = Clock.Global.nanoTime();
+//                logger.info(
+//                    "[{}] End takeTaskPermit({}) {} Duration: {}",
+//                    name,
+//                    checkForWorkPermitOvercommit,
+//                    end,
+//                    end - start
+//                );
                 return result;
             }
-            logger.info("[{}] Task permit CAS failed {}", name, Clock.Global.nanoTime() - start);
+//            logger.info("[{}] Task permit CAS failed {}", name, Clock.Global.nanoTime() - start);
         }
     }
 
     // takes a worker permit and (optionally) a task permit simultaneously; if one of the two is unavailable, returns false
     boolean takeWorkPermit(boolean takeTaskPermit)
     {
-        final long start = Clock.Global.nanoTime();
-        logger.info("[{}] takeWorkPermit({}) {}", name, takeTaskPermit, start);
+//        final long start = Clock.Global.nanoTime();
+//        logger.info("[{}] takeWorkPermit({}) {}", name, takeTaskPermit, start);
         int taskDelta = takeTaskPermit ? 1 : 0;
         while (true)
         {
             long current = permits.get();
             int workPermits = workPermits(current);
             int taskPermits = taskPermits(current);
-            logger.info(
-                "[{}] Work permits: {} Task permits: {} {}",
-                name,
-                workPermits,
-                taskPermits,
-                Clock.Global.nanoTime() - start
-            );
+//            logger.info(
+//                "[{}] Work permits: {} Task permits: {} {}",
+//                name,
+//                workPermits,
+//                taskPermits,
+//                Clock.Global.nanoTime() - start
+//            );
             if (workPermits <= 0 || taskPermits == 0)
             {
                 final long end = Clock.Global.nanoTime();
-                logger.info(
-                    "[{}] End takeWorkPermit({}) Cannot take work permit workPermits {} <= 0 || taskPermits {} == 0 {} Duration: {}",
-                    name,
-                    takeTaskPermit,
-                    workPermits,
-                    taskPermits,
-                    end,
-                    end - start
-                );
+//                logger.info(
+//                    "[{}] End takeWorkPermit({}) Cannot take work permit workPermits {} <= 0 || taskPermits {} == 0 {} Duration: {}",
+//                    name,
+//                    takeTaskPermit,
+//                    workPermits,
+//                    taskPermits,
+//                    end,
+//                    end - start
+//                );
                 return false;
             }
             if (permits.compareAndSet(current, combine(taskPermits - taskDelta, workPermits - 1)))
             {
                 final long end = Clock.Global.nanoTime();
-                logger.info(
-                    "[{}] End takeWorkPermit({}) Took work permit, new count: {} {} Duration: {}",
-                    name,
-                    takeTaskPermit,
-                    workPermits - 1,
-                    end,
-                    end - start
-                );
+//                logger.info(
+//                    "[{}] End takeWorkPermit({}) Took work permit, new count: {} {} Duration: {}",
+//                    name,
+//                    takeTaskPermit,
+//                    workPermits - 1,
+//                    end,
+//                    end - start
+//                );
                 return true;
             }
         }
@@ -275,22 +275,22 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     // gives up a work permit
     void returnWorkPermit()
     {
-        final long start = Clock.Global.nanoTime();
-        logger.info("[{}] Start returnWorkPermit() {}", name, start);
+//        final long start = Clock.Global.nanoTime();
+//        logger.info("[{}] Start returnWorkPermit() {}", name, start);
         while (true)
         {
             long current = permits.get();
             int workPermits = workPermits(current);
             if (permits.compareAndSet(current, updateWorkPermits(current, workPermits + 1)))
             {
-                final long end = Clock.Global.nanoTime();
-                logger.info(
-                    "[{}] End returnWorkPermit() New permits: {} {} Duration: {}",
-                    name,
-                    workPermits + 1,
-                    end,
-                    end - start
-                );
+//                final long end = Clock.Global.nanoTime();
+//                logger.info(
+//                    "[{}] End returnWorkPermit() New permits: {} {} Duration: {}",
+//                    name,
+//                    workPermits + 1,
+//                    end,
+//                    end - start
+//                );
                 return;
             }
         }
@@ -304,29 +304,29 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     @Override
     public void maybeExecuteImmediately(Runnable task)
     {
-        final long start = Clock.Global.nanoTime();
-        logger.info("[{}] Start maybeExecuteImmediately() {}", name, start);
+//        final long start = Clock.Global.nanoTime();
+//        logger.info("[{}] Start maybeExecuteImmediately() {}", name, start);
         task = taskFactory.toExecute(task);
         if (!takeWorkPermit(false))
         {
-            logger.info(
-                "[{}] Cannot take work permit (not taking task), unqueuing task {}",
-                name,
-                Clock.Global.nanoTime() - start
-            );
+//            logger.info(
+//                "[{}] Cannot take work permit (not taking task), unqueuing task {}",
+//                name,
+//                Clock.Global.nanoTime() - start
+//            );
             addTask(task);
         }
         else
         {
-            logger.info("[{}] Took work permit (not taking task) {}", name, Clock.Global.nanoTime() - start);
+//            logger.info("[{}] Took work permit (not taking task) {}", name, Clock.Global.nanoTime() - start);
             try
             {
-                logger.info("[{}] Running task {}", name, Clock.Global.nanoTime() - start);
+//                logger.info("[{}] Running task {}", name, Clock.Global.nanoTime() - start);
                 task.run();
             }
             finally
             {
-                logger.info("[{}] Return work permit and maybeSchedule() {}", name, Clock.Global.nanoTime() - start);
+//                logger.info("[{}] Return work permit and maybeSchedule() {}", name, Clock.Global.nanoTime() - start);
                 returnWorkPermit();
                 // we have to maintain our invariant of always scheduling after any work is performed
                 // in this case in particular we are not processing the rest of the queue anyway, and so
@@ -334,8 +334,8 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
                 maybeSchedule();
             }
         }
-        final long end = Clock.Global.nanoTime();
-        logger.info("[{}] End maybeExecuteImmediately() {} Duration: {}", name, end, end - start);
+//        final long end = Clock.Global.nanoTime();
+//        logger.info("[{}] End maybeExecuteImmediately() {} Duration: {}", name, end, end - start);
     }
 
     @Override
