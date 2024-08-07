@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.util.concurrent.FastThreadLocalThread;
+import org.apache.cassandra.metrics.scheduler.SEPWorkerMetrics;
 import org.apache.cassandra.utils.Clock;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 
@@ -42,6 +43,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     final Long workerId;
     final Thread thread;
     final SharedExecutorPool pool;
+    private final SEPWorkerMetrics metrics;
 
     // prevStopCheck stores the value of pool.stopCheck after we last incremented it; if it hasn't changed,
     // we know nobody else was spinning in the interval, so we increment our soleSpinnerSpinTime accordingly,
@@ -49,6 +51,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     // strategy can only work when there are multiple threads spinning (as more sleep time must elapse than real time)
     long prevStopCheck = 0;
     long soleSpinnerSpinTime = 0;
+    private long parkStart = 0;
 
     private final AtomicReference<Runnable> currentTask = new AtomicReference<>();
 
@@ -56,6 +59,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     {
         this.pool = pool;
         this.workerId = workerId;
+        this.metrics = new SEPWorkerMetrics(threadGroup, workerId);
         thread = new FastThreadLocalThread(threadGroup, this, threadGroup.getName() + "-Worker-" + workerId);
         thread.setDaemon(true);
         set(initialState);
@@ -96,7 +100,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 
         SEPExecutor assigned = null;
         Runnable task = null;
-//        final long start = Clock.Global.nanoTime();
+        final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] Start run() {}", workerId, start);
         try
         {
@@ -105,7 +109,13 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //                final long _start = Clock.Global.nanoTime();
 //                logger.info("[{}] Start run() iteration {}", workerId, _start);
                 if (pool.shuttingDown)
+                {
+                    this.metrics.runLatency.update(
+                        Clock.Global.nanoTime() - start,
+                        TimeUnit.NANOSECONDS
+                    );
                     return;
+                }
 
                 if (isSpinning() && !selfAssign())
                 {
@@ -129,6 +139,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //                    );
                     while (isStopped())
                     {
+                        parkStart = Clock.Global.nanoTime();
                         LockSupport.park();
                     }
 //                    logger.info("[{}] Finished top parking {}", workerId, Clock.Global.nanoTime() - _start);
@@ -177,10 +188,14 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                     assigned.maybeSchedule();
 
                     // we know there is work waiting, as we have a work permit, so poll() will always succeed
-//                    final long startTask = Clock.Global.nanoTime();
+                    final long startTask = Clock.Global.nanoTime();
 //                    logger.info("[{}] Start task.run() {}", workerId, startTask - _start);
                     task.run();
-                    final long endTask = Clock.Global.nanoTime();
+                    this.metrics.taskRunLatency.update(
+                        Clock.Global.nanoTime() - startTask,
+                        TimeUnit.NANOSECONDS
+                    );
+//                    final long endTask = Clock.Global.nanoTime();
 //                    logger.info("[{}] End task.run() {} Duration: {}", workerId, endTask - _start, endTask - startTask);
                     assigned.onCompletion();
                     task = null;
@@ -241,6 +256,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //                        end,
 //                        end - _start
 //                    );
+                    this.metrics.runLatency.update(
+                        Clock.Global.nanoTime() - start,
+                        TimeUnit.NANOSECONDS
+                    );
                     return;
                 }
                 assigned = null;
@@ -300,6 +319,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //            logger.info("[{}] Marked workerEnded {}", workerId, Clock.Global.nanoTime() - start);
             pool.workerEnded(this);
         }
+        this.metrics.runLatency.update(
+            Clock.Global.nanoTime() - start,
+            TimeUnit.NANOSECONDS
+        );
 //        final long end = Clock.Global.nanoTime();
 //        logger.info("[{}] End run() {} Duration: {}", workerId, end, end - start);
     }
@@ -310,7 +333,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     boolean assign(Work work, boolean self)
     {
         Work state = get();
-//        final long start = Clock.Global.nanoTime();
+        final long start = Clock.Global.nanoTime();
 //        logger.info(
 //            "[{}] Start assign({}, {}) {}",
 //            workerId,
@@ -351,6 +374,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //                        end,
 //                        end - start
 //                    );
+                    this.metrics.assignLatency.update(
+                        Clock.Global.nanoTime() - start,
+                        TimeUnit.NANOSECONDS
+                    );
                     return true;
                 }
             }
@@ -365,6 +392,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //                    Clock.Global.nanoTime() - start
 //                );
                 LockSupport.unpark(thread);
+                this.metrics.parkLatency.update(
+                    Clock.Global.nanoTime() - parkStart,
+                    TimeUnit.NANOSECONDS
+                );
             }
 //            final long end = Clock.Global.nanoTime();
 //            logger.info(
@@ -375,6 +406,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //                end,
 //                end - start
 //            );
+            this.metrics.assignLatency.update(
+                Clock.Global.nanoTime() - start,
+                TimeUnit.NANOSECONDS
+            );
             return true;
         }
 //        final long end = Clock.Global.nanoTime();
@@ -384,24 +419,32 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //            end,
 //            end - start
 //        );
+        this.metrics.assignLatency.update(
+            Clock.Global.nanoTime() - start,
+            TimeUnit.NANOSECONDS
+        );
         return false;
     }
 
     // try to assign ourselves an executor with work available
     private boolean selfAssign()
     {
-//        final long start = Clock.Global.nanoTime();
+        final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] Start selfAssign() {}", workerId, start);
         // if we aren't permitted to assign in this state, fail
         if (!get().canAssign(true))
         {
-            final long end = Clock.Global.nanoTime();
+//            final long end = Clock.Global.nanoTime();
 //            logger.info(
 //                "[{}] End selfAssign() cannot assign {} Duration: {}",
 //                workerId,
 //                end,
 //                end - start
 //            );
+            this.metrics.selfAssignLatency.update(
+                Clock.Global.nanoTime() - start,
+                TimeUnit.NANOSECONDS
+            );
             return false;
         }
         for (SEPExecutor exec : pool.executors)
@@ -419,6 +462,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //                        end,
 //                        end - start
 //                    );
+                    this.metrics.selfAssignLatency.update(
+                        Clock.Global.nanoTime() - start,
+                        TimeUnit.NANOSECONDS
+                    );
                     return true;
                 }
                 // ... if we fail, schedule it to another worker
@@ -433,6 +480,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //                );
                 // and return success as we must have already been assigned a task
                 assert get().assigned != null;
+                this.metrics.selfAssignLatency.update(
+                    Clock.Global.nanoTime() - start,
+                    TimeUnit.NANOSECONDS
+                );
                 return true;
             }
         }
@@ -443,6 +494,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //            end,
 //            end - start
 //        );
+        this.metrics.selfAssignLatency.update(
+            Clock.Global.nanoTime() - start,
+            TimeUnit.NANOSECONDS
+        );
         return false;
     }
 
@@ -496,7 +551,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     // perform a sleep-spin, incrementing pool.stopCheck accordingly
     private void doWaitSpin()
     {
-        long start = Clock.Global.nanoTime();
+        final long _start = Clock.Global.nanoTime();
 //        logger.info("[{}] Start doWaitSpin() {}", workerId, start);
         // pick a random sleep interval based on the number of threads spinning, so that
         // we should always have a thread about to wake up, but most threads are sleeping
@@ -505,13 +560,12 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
         sleep *= ThreadLocalRandom.current().nextDouble();
         sleep = Math.max(10000, sleep);
 
-        start = nanoTime();
+        long start = nanoTime();
 
         // place ourselves in the spinning collection; if we clash with another thread just exit
         Long target = start + sleep;
         if (pool.spinning.putIfAbsent(target, this) != null)
-            return;
-//        LockSupport.parkNanos(sleep);
+            LockSupport.parkNanos(sleep);
 
         // remove ourselves (if haven't been already) - we should be at or near the front, so should be cheap-ish
         pool.spinning.remove(target, this);
@@ -527,6 +581,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
         else
             soleSpinnerSpinTime = 0;
         prevStopCheck = stopCheck;
+        this.metrics.waitSpinLatency.update(
+            Clock.Global.nanoTime() - _start,
+            TimeUnit.NANOSECONDS
+        );
     }
 
     private static final long stopCheckInterval = TimeUnit.MILLISECONDS.toNanos(10L);
@@ -537,7 +595,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     // realtime we have spun too much and deschedule; if we get too far behind realtime, we reset to our initial offset
     private void maybeStop(long stopCheck, long now)
     {
-//        final long start = Clock.Global.nanoTime();
+        final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] Start maybeStop({},{}) {}", workerId, stopCheck, now, start);
         long delta = now - stopCheck;
         if (delta <= 0)
@@ -615,6 +673,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //            end,
 //            end - start
 //        );
+        this.metrics.stopLatency.update(
+            Clock.Global.nanoTime() - start,
+            TimeUnit.NANOSECONDS
+        );
     }
 
     private boolean isSpinning()

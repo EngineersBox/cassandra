@@ -27,14 +27,13 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import org.apache.cassandra.metrics.CassandraMetricsRegistry;
 import org.apache.cassandra.metrics.MetricNameFactory;
-import org.apache.cassandra.metrics.TableMetrics;
 
 import static org.apache.cassandra.metrics.CassandraMetricsRegistry.Metrics;
 
 public class SharedExecutorPoolMetrics
 {
     private final MetricNameFactory nameFactory = new SEPMetricNameFactory();
-    private final Set<TableMetrics.ReleasableMetric> releasable = new HashSet<>();
+    private final Set<ReleasableMetric> releasable = new HashSet<>();
     public final Timer scheduleLatency;
     public final Timer maybeStartSpinningWorkerLatency;
     public final Counter spinningCounter;
@@ -83,7 +82,13 @@ public class SharedExecutorPoolMetrics
     }
 
     public void release() {
-        this.releasable.forEach(TableMetrics.ReleasableMetric::release);
+        this.releasable.forEach(ReleasableMetric::release);
+    }
+
+    @FunctionalInterface
+    public interface ReleasableMetric
+    {
+        void release();
     }
 
     private static class SEPMetricNameFactory implements MetricNameFactory
@@ -91,7 +96,7 @@ public class SharedExecutorPoolMetrics
         @Override
         public CassandraMetricsRegistry.MetricName createMetricName(final String metricName)
         {
-            final String groupName = TableMetrics.class.getPackage().getName();
+            final String groupName = SharedExecutorPoolMetrics.class.getPackage().getName();
             String mbeanName = groupName
                                + ':'
                                + "type=SharedExecutorPool"
