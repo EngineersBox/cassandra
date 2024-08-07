@@ -256,8 +256,8 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 //            );
             if (workPermits <= 0 || taskPermits == 0)
             {
-                final long end = Clock.Global.nanoTime();
-//                logger.info(
+//                final long end = Clock.Global.nanoTime();
+//                logger.info( 
 //                    "[{}] End takeWorkPermit({}) Cannot take work permit workPermits {} <= 0 || taskPermits {} == 0 {} Duration: {}",
 //                    name,
 //                    takeTaskPermit,
@@ -274,7 +274,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             }
             if (permits.compareAndSet(current, combine(taskPermits - taskDelta, workPermits - 1)))
             {
-                final long end = Clock.Global.nanoTime();
+//                final long end = Clock.Global.nanoTime();
 //                logger.info(
 //                    "[{}] End takeWorkPermit({}) Took work permit, new count: {} {} Duration: {}",
 //                    name,
