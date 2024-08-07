@@ -21,6 +21,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
+import com.codahale.metrics.Timer;
 import org.apache.cassandra.concurrent.ResizableThreadPool;
 import org.apache.cassandra.metrics.CassandraMetricsRegistry.MetricName;
 
@@ -35,6 +36,11 @@ public class ThreadPoolMetrics
 {
     public static final String ACTIVE_TASKS = "ActiveTasks";
     public static final String PENDING_TASKS = "PendingTasks";
+    public static final String ADD_TASK_LATENCY = "AddTaskLatency";
+    public static final String TAKE_TASK_PERMIT_LATENCY = "TakeTaskPermitLatency";
+    public static final String TAKE_WORK_PERMIT_LATENCY = "TakeWorkPermitLatency";
+    public static final String RETURN_WORK_PERMIT_LATENCY = "ReturnWorkPermitLatency";
+    public static final String MAYBE_EXECUTE_IMMEDIATELY_LATENCY = "MaybeExecuteImmediatelyLatency";
     public static final String COMPLETED_TASKS = "CompletedTasks";
     public static final String CURRENTLY_BLOCKED_TASKS = "CurrentlyBlockedTasks";
     public static final String TOTAL_BLOCKED_TASKS = "TotalBlockedTasks";
@@ -69,6 +75,12 @@ public class ThreadPoolMetrics
     /** Maximum number of tasks queued before a task get blocked */
     public final Gauge<Integer> maxTasksQueued;
 
+    public final Timer addTaskLatency;
+    public final Timer takeTaskPermitLatency;
+    public final Timer takeWorkPermitLatency;
+    public final Timer returnWorkPermitLatency;
+    public final Timer maybeExecuteImmediatelyLatency;
+
     public final String path;
     public final String poolName;
 
@@ -86,6 +98,11 @@ public class ThreadPoolMetrics
 
         totalBlocked = new Counter();
         currentBlocked = new Counter();
+        this.addTaskLatency = new Timer();
+        this.takeTaskPermitLatency = new Timer();
+        this.takeWorkPermitLatency = new Timer();
+        this.returnWorkPermitLatency = new Timer();
+        this.maybeExecuteImmediatelyLatency = new Timer();
         activeTasks = executor::getActiveTaskCount;
         pendingTasks = executor::getPendingTaskCount;
         completedTasks = executor::getCompletedTaskCount;
@@ -98,6 +115,11 @@ public class ThreadPoolMetrics
     {
         Metrics.register(makeMetricName(path, poolName, ACTIVE_TASKS), activeTasks);
         Metrics.register(makeMetricName(path, poolName, PENDING_TASKS), pendingTasks);
+        Metrics.register(makeMetricName(path, poolName, ADD_TASK_LATENCY), addTaskLatency);
+        Metrics.register(makeMetricName(path, poolName, TAKE_TASK_PERMIT_LATENCY), takeTaskPermitLatency);
+        Metrics.register(makeMetricName(path, poolName, TAKE_WORK_PERMIT_LATENCY), takeWorkPermitLatency);
+        Metrics.register(makeMetricName(path, poolName, RETURN_WORK_PERMIT_LATENCY), returnWorkPermitLatency);
+        Metrics.register(makeMetricName(path, poolName, MAYBE_EXECUTE_IMMEDIATELY_LATENCY), maybeExecuteImmediatelyLatency);
         Metrics.register(makeMetricName(path, poolName, COMPLETED_TASKS), completedTasks);
         Metrics.register(makeMetricName(path, poolName, CURRENTLY_BLOCKED_TASKS), currentBlocked);
         Metrics.register(makeMetricName(path, poolName, TOTAL_BLOCKED_TASKS), totalBlocked);
@@ -111,6 +133,11 @@ public class ThreadPoolMetrics
     {
         Metrics.remove(makeMetricName(path, poolName, ACTIVE_TASKS));
         Metrics.remove(makeMetricName(path, poolName, PENDING_TASKS));
+        Metrics.remove(makeMetricName(path, poolName, ADD_TASK_LATENCY));
+        Metrics.remove(makeMetricName(path, poolName, TAKE_TASK_PERMIT_LATENCY));
+        Metrics.remove(makeMetricName(path, poolName, TAKE_WORK_PERMIT_LATENCY));
+        Metrics.remove(makeMetricName(path, poolName, RETURN_WORK_PERMIT_LATENCY));
+        Metrics.remove(makeMetricName(path, poolName, MAYBE_EXECUTE_IMMEDIATELY_LATENCY));
         Metrics.remove(makeMetricName(path, poolName, COMPLETED_TASKS));
         Metrics.remove(makeMetricName(path, poolName, CURRENTLY_BLOCKED_TASKS));
         Metrics.remove(makeMetricName(path, poolName, TOTAL_BLOCKED_TASKS));

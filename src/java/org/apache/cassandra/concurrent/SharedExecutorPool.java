@@ -35,7 +35,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.concurrent.DebuggableTask.RunningDebuggableTask;
+import org.apache.cassandra.metrics.scheduler.SharedExecutorPoolMetrics;
 import org.apache.cassandra.utils.Clock;
+//import org.apache.cassandra.utils.Clock;
 
 import static org.apache.cassandra.concurrent.ExecutorFactory.Global.executorFactory;
 import static org.apache.cassandra.concurrent.SEPWorker.Work;
@@ -85,12 +87,17 @@ public class SharedExecutorPool
     // the collection of threads that are (most likely) in a spinning state - new workers are scheduled from here first
     // TODO: consider using a queue partially-ordered by scheduled wake-up time
     // (a full-fledged correctly ordered SkipList is overkill)
-    final ConcurrentSkipListMap<Long, SEPWorker> spinning = new ConcurrentSkipListMap<>();
+    public final ConcurrentSkipListMap<Long, SEPWorker> spinning = new ConcurrentSkipListMap<>();
     // the collection of threads that have been asked to stop/deschedule - new workers are scheduled from here last
     final ConcurrentSkipListMap<Long, SEPWorker> descheduled = new ConcurrentSkipListMap<>();
     // All SEPWorkers that are currently running
     private final Set<SEPWorker> allWorkers = Collections.newSetFromMap(new ConcurrentHashMap<>());
-
+    private final SharedExecutorPoolMetrics metrics = new SharedExecutorPoolMetrics(
+        spinning::size,
+        descheduled::size,
+        allWorkers::size,
+        executors::size
+    );
     volatile boolean shuttingDown = false;
 
     public SharedExecutorPool(String name)
@@ -105,7 +112,7 @@ public class SharedExecutorPool
 
     void schedule(Work work)
     {
-//        final long start = Clock.Global.nanoTime();
+        final long start = Clock.Global.nanoTime();
 //        logger.info("[SEP] Start schedule({}) {}", work.label, start);
         // we try to hand-off our work to the spinning queue before the descheduled queue, even though we expect it to be empty
         // all we're doing here is hoping to find a worker without work to do, but it doesn't matter too much what we find;
@@ -122,7 +129,7 @@ public class SharedExecutorPool
 //            );
             if (e.getValue().assign(work, false))
             {
-                final long end = Clock.Global.nanoTime();
+//                final long end = Clock.Global.nanoTime();
 //                logger.info(
 //                    "[SEP] End schedule({}) assigned work to {} {} {}",
 //                    work.label,
@@ -130,6 +137,10 @@ public class SharedExecutorPool
 //                    end - start,
 //                    end
 //                );
+                this.metrics.scheduleLatency.update(
+                    Clock.Global.nanoTime() - start,
+                    TimeUnit.NANOSECONDS
+                );
                 return;
             }
         }
@@ -152,6 +163,10 @@ public class SharedExecutorPool
 //            end - start,
 //            end
 //        );
+        this.metrics.scheduleLatency.update(
+            Clock.Global.nanoTime() - start,
+            TimeUnit.NANOSECONDS
+        );
     }
 
     void workerEnded(SEPWorker worker)
@@ -170,7 +185,7 @@ public class SharedExecutorPool
 
     void maybeStartSpinningWorker()
     {
-//        final long start = Clock.Global.nanoTime();
+        final long start = Clock.Global.nanoTime();
 //        logger.info("[SEP] Start maybeStartSpinningWorker() {}", start);
         // in general the workers manage spinningCount directly; however if it is zero, we increment it atomically
         // ourselves to avoid starting a worker unless we have to
@@ -193,6 +208,10 @@ public class SharedExecutorPool
                 LockSupport.unpark(entry.getValue().thread);
             }
         }
+        this.metrics.maybeStartSpinningWorkerLatency.update(
+            Clock.Global.nanoTime() - start,
+            TimeUnit.NANOSECONDS
+        );
 //        final long end = Clock.Global.nanoTime();
 //        logger.info("[SEP] End maybeStartSpinningWorker() {} Duration: {}", end, end - start);
     }

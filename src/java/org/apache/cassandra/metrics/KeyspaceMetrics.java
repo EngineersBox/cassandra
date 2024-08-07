@@ -440,5 +440,5 @@ public class KeyspaceMetrics
 
             return new MetricName(groupName, "keyspace", metricName, keyspaceName, mbeanName.toString());
         }
-    }
+}
 }

@@ -67,6 +67,13 @@ public class CassandraMetricsRegistry extends MetricRegistry
         return counter;
     }
 
+    public Counter counter(MetricName name, MetricSupplier<Counter> supplier) {
+        Counter counter = counter(name.getMetricName(), supplier);
+        registerMBean(counter, name.getMBeanName());
+
+        return counter;
+    }
+
     public Meter meter(MetricName name)
     {
         Meter meter = meter(name.getMetricName());

@@ -122,8 +122,8 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     {
         // we add to the queue first, so that when a worker takes a task permit it can be certain there is a task available
         // this permits us to schedule threads non-spuriously; it also means work is serviced fairly
+        final long start = Clock.Global.nanoTime();
         tasks.add(task);
-//        final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] Start addTask {}", name, start);
         int taskPermits;
         while (true)
@@ -152,6 +152,10 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         }
 //        final long end = Clock.Global.nanoTime();
 //        logger.info("[{}] End addTask() {} Duration: {}", name, end, end - start);
+        this.metrics.addTaskLatency.update(
+            Clock.Global.nanoTime() - start,
+            TimeUnit.NANOSECONDS
+        );
         return task;
     }
 
@@ -167,7 +171,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     TakeTaskPermitResult takeTaskPermit(boolean checkForWorkPermitOvercommit)
     {
         TakeTaskPermitResult result;
-//        final long start = Clock.Global.nanoTime();
+        final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] Start takeTaskPermit({}) {}", name, checkForWorkPermitOvercommit, start);
         while (true)
         {
@@ -202,6 +206,10 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 //                        end,
 //                        end - start
 //                    );
+                    this.metrics.takeTaskPermitLatency.update(
+                        Clock.Global.nanoTime() - start,
+                        TimeUnit.NANOSECONDS
+                    );
                     return NONE_AVAILABLE;
                 }
                 result = TOOK_PERMIT;
@@ -218,6 +226,10 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 //                    end,
 //                    end - start
 //                );
+                this.metrics.takeTaskPermitLatency.update(
+                Clock.Global.nanoTime() - start,
+                TimeUnit.NANOSECONDS
+                );
                 return result;
             }
 //            logger.info("[{}] Task permit CAS failed {}", name, Clock.Global.nanoTime() - start);
@@ -227,7 +239,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     // takes a worker permit and (optionally) a task permit simultaneously; if one of the two is unavailable, returns false
     boolean takeWorkPermit(boolean takeTaskPermit)
     {
-//        final long start = Clock.Global.nanoTime();
+        final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] takeWorkPermit({}) {}", name, takeTaskPermit, start);
         int taskDelta = takeTaskPermit ? 1 : 0;
         while (true)
@@ -254,6 +266,10 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 //                    end,
 //                    end - start
 //                );
+                this.metrics.takeWorkPermitLatency.update(
+                    Clock.Global.nanoTime() - start,
+                    TimeUnit.NANOSECONDS
+                );
                 return false;
             }
             if (permits.compareAndSet(current, combine(taskPermits - taskDelta, workPermits - 1)))
@@ -267,6 +283,10 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 //                    end,
 //                    end - start
 //                );
+                this.metrics.takeWorkPermitLatency.update(
+                Clock.Global.nanoTime() - start,
+                TimeUnit.NANOSECONDS
+                );
                 return true;
             }
         }
@@ -275,7 +295,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     // gives up a work permit
     void returnWorkPermit()
     {
-//        final long start = Clock.Global.nanoTime();
+        final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] Start returnWorkPermit() {}", name, start);
         while (true)
         {
@@ -291,6 +311,10 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 //                    end,
 //                    end - start
 //                );
+                this.metrics.returnWorkPermitLatency.update(
+                    Clock.Global.nanoTime() - start,
+                    TimeUnit.NANOSECONDS
+                );
                 return;
             }
         }
@@ -304,7 +328,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     @Override
     public void maybeExecuteImmediately(Runnable task)
     {
-//        final long start = Clock.Global.nanoTime();
+        final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] Start maybeExecuteImmediately() {}", name, start);
         task = taskFactory.toExecute(task);
         if (!takeWorkPermit(false))
@@ -336,6 +360,10 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         }
 //        final long end = Clock.Global.nanoTime();
 //        logger.info("[{}] End maybeExecuteImmediately() {} Duration: {}", name, end, end - start);
+        this.metrics.maybeExecuteImmediatelyLatency.update(
+            Clock.Global.nanoTime() - start,
+            TimeUnit.NANOSECONDS
+        );
     }
 
     @Override
