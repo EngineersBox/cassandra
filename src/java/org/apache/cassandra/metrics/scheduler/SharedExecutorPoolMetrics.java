@@ -45,7 +45,7 @@ public class SharedExecutorPoolMetrics
                                      final Supplier<Integer> descheduledSource,
                                      final Supplier<Integer> workersSource,
                                      final Supplier<Integer> executorsSource) {
-        this.scheduleLatency = timer("scheduleLatency");
+        this.scheduleLatency = timer("ScheduleLatency");
         this.maybeStartSpinningWorkerLatency = timer("MaybeStartSpinningWorkerLatency");
 
         this.spinningCounter = counterExternal("SpinningWorkers", spinningSource);
@@ -104,7 +104,7 @@ public class SharedExecutorPoolMetrics
             return new CassandraMetricsRegistry.MetricName(
                 groupName,
                 "SharedExecutorPool",
-                metricName,
+                "SharedExecutorPool " + metricName,
                 mbeanName
             );
         }
