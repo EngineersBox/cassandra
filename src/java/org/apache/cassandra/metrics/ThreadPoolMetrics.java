@@ -149,11 +149,11 @@ public class ThreadPoolMetrics
 
     private static MetricName makeMetricName(String path, String poolName, String metricName)
     {
-        return new MetricName("org.apache.cassandra.metrics",
+        return new MetricName("org.apache.cassandra.metrics.scheduler",
                               "ThreadPools",
                               metricName,
                               path + '.' + poolName,
-                              format("org.apache.cassandra.metrics:type=ThreadPools,path=%s,scope=%s,name=%s",
+                              format("org.apache.cassandra.metrics.scheduler:type=ThreadPools,path=%s,scope=%s,name=%s",
                                      path, poolName, metricName));
     }
 }

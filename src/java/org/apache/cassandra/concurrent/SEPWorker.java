@@ -43,7 +43,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     final Long workerId;
     final Thread thread;
     final SharedExecutorPool pool;
-    private final SEPWorkerMetrics metrics;
+    final SEPWorkerMetrics metrics;
 
     // prevStopCheck stores the value of pool.stopCheck after we last incremented it; if it hasn't changed,
     // we know nobody else was spinning in the interval, so we increment our soleSpinnerSpinTime accordingly,
@@ -114,6 +114,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                         Clock.Global.nanoTime() - start,
                         TimeUnit.NANOSECONDS
                     );
+                    this.metrics.release();
                     return;
                 }
 

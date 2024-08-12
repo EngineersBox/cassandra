@@ -173,6 +173,7 @@ public class SharedExecutorPool
     {
 //        logger.info("[SEP] Worker ended, removing {} {}", worker.workerId, Clock.Global.nanoTime());
         allWorkers.remove(worker);
+        worker.metrics.release();
     }
 
     public List<RunningDebuggableTask> runningTasks()
@@ -258,6 +259,9 @@ public class SharedExecutorPool
             e.getValue().assign(Work.SPINNING, false);
 
         while (null != (e = spinning.pollFirstEntry()))
+        {
             LockSupport.unpark(e.getValue().thread);
+            e.getValue().metrics.release();
+        }
     }
 }

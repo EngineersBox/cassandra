@@ -113,17 +113,17 @@ public class SEPWorkerMetrics
             String mbeanName = groupName
                                + ':'
                                + "type=SEPWorker,"
-                               + "group=" + this.threadGroup
-                               + ",worker=" + this.workerId
+                               + "threadgroup=" + this.threadGroup
+                               + ",scope=" + this.workerId
                                + ",name=" + metricName;
             return new CassandraMetricsRegistry.MetricName(
                 groupName,
                 "SEPWorker",
-                metricName,
+                this.threadGroup + " " + this.workerId,
+                "SEPWorker",
                 mbeanName
             );
         }
     }
-
 
 }
