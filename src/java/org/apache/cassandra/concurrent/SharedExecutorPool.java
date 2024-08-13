@@ -172,8 +172,8 @@ public class SharedExecutorPool
     void workerEnded(SEPWorker worker)
     {
 //        logger.info("[SEP] Worker ended, removing {} {}", worker.workerId, Clock.Global.nanoTime());
-        allWorkers.remove(worker);
         worker.metrics.release();
+        allWorkers.remove(worker);
     }
 
     public List<RunningDebuggableTask> runningTasks()

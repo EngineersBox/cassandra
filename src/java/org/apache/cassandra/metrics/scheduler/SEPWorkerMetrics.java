@@ -43,10 +43,10 @@ public class SEPWorkerMetrics
     public final Timer selfAssignLatency;
     public final Timer stopLatency;
 
-    public SEPWorkerMetrics(final ThreadGroup threadGroup, final long workerId) {
+    public SEPWorkerMetrics(final ThreadGroup threadGroup, final Thread worker) {
         this.nameFactory = new SEPWorkerMetricNameFactory(
             threadGroup.getName(),
-            workerId
+            worker
         );
         this.runLatency = timer("RunLatency");
         this.taskRunLatency = timer("TaskRunLatency");
@@ -98,29 +98,30 @@ public class SEPWorkerMetrics
     {
 
         private final String threadGroup;
-        private final long workerId;
+        private final Thread worker;
 
         public SEPWorkerMetricNameFactory(final String threadGroup,
-                                          final long workerId) {
+                                          final Thread worker) {
             this.threadGroup = threadGroup;
-            this.workerId = workerId;
+            this.worker = worker;
         }
 
         @Override
         public CassandraMetricsRegistry.MetricName createMetricName(final String metricName)
         {
             final String groupName = SEPWorkerMetrics.class.getPackage().getName();
-            String mbeanName = groupName
+            final String workerName = this.worker.getName();
+            final String mbeanName = groupName
                                + ':'
                                + "type=SEPWorker,"
                                + "threadgroup=" + this.threadGroup
-                               + ",scope=" + this.workerId
+                               + ",scope=" + workerName
                                + ",name=" + metricName;
             return new CassandraMetricsRegistry.MetricName(
                 groupName,
                 "SEPWorker",
-                this.threadGroup + " " + this.workerId,
-                "SEPWorker",
+                metricName,
+                workerName,
                 mbeanName
             );
         }

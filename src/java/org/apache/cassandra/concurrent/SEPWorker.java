@@ -43,7 +43,8 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     final Long workerId;
     final Thread thread;
     final SharedExecutorPool pool;
-    final SEPWorkerMetrics metrics;
+    final ThreadGroup threadGroup;
+    SEPWorkerMetrics metrics;
 
     // prevStopCheck stores the value of pool.stopCheck after we last incremented it; if it hasn't changed,
     // we know nobody else was spinning in the interval, so we increment our soleSpinnerSpinTime accordingly,
@@ -59,7 +60,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
     {
         this.pool = pool;
         this.workerId = workerId;
-        this.metrics = new SEPWorkerMetrics(threadGroup, workerId);
+        this.threadGroup = threadGroup;
         thread = new FastThreadLocalThread(threadGroup, this, threadGroup.getName() + "-Worker-" + workerId);
         thread.setDaemon(true);
         set(initialState);
@@ -86,6 +87,11 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 
     public void run()
     {
+        if (this.metrics != null) {
+            this.metrics.release();
+            this.metrics = null;
+        }
+        this.metrics = new SEPWorkerMetrics(threadGroup, Thread.currentThread());
         /*
          * we maintain two important invariants:
          * 1)   after exiting spinning phase, we ensure at least one more task on _each_ queue will be processed
@@ -315,15 +321,15 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
         }
         finally
         {
+            this.metrics.runLatency.update(
+                Clock.Global.nanoTime() - start,
+                TimeUnit.NANOSECONDS
+            );
 //            logger.info("[{}] Finally released task {}", workerId, Clock.Global.nanoTime() - start);
             currentTask.lazySet(null);
 //            logger.info("[{}] Marked workerEnded {}", workerId, Clock.Global.nanoTime() - start);
             pool.workerEnded(this);
         }
-        this.metrics.runLatency.update(
-            Clock.Global.nanoTime() - start,
-            TimeUnit.NANOSECONDS
-        );
 //        final long end = Clock.Global.nanoTime();
 //        logger.info("[{}] End run() {} Duration: {}", workerId, end, end - start);
     }
