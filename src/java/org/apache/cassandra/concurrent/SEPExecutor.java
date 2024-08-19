@@ -51,6 +51,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     private final AtomicInteger maximumPoolSize;
     private final MaximumPoolSizeListener maximumPoolSizeListener;
     public final String name;
+    public final String stageName;
     private final String mbeanName;
     @VisibleForTesting
     public final ThreadPoolMetrics metrics;
@@ -73,6 +74,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     {
         this.pool = pool;
         this.name = NamedThreadFactory.globalPrefix() + name;
+        this.stageName = name;
         this.mbeanName = "org.apache.cassandra." + jmxPath + ":type=" + name;
         this.maximumPoolSize = new AtomicInteger(maximumPoolSize);
         this.maximumPoolSizeListener = maximumPoolSizeListener;

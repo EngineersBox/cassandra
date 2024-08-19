@@ -22,9 +22,14 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.function.Supplier;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.codahale.metrics.Counter;
+import com.codahale.metrics.Gauge;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
+import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.metrics.CassandraMetricsRegistry;
 import org.apache.cassandra.metrics.MetricNameFactory;
 
@@ -32,6 +37,10 @@ import static org.apache.cassandra.metrics.CassandraMetricsRegistry.Metrics;
 
 public class SEPWorkerMetrics
 {
+    private static final Logger LOGGER = LoggerFactory.getLogger(SEPWorkerMetrics.class);
+    public static final String UNASSIGNED_EXECUTOR_NAME = "UNASSIGNED";
+    public static final int UNASSIGNED_EXECUTOR_ORDINAL = 255;
+
     private final SEPWorkerMetricNameFactory nameFactory;
     private final Set<ReleasableMetric> releasable = new HashSet<>();
 
@@ -42,11 +51,14 @@ public class SEPWorkerMetrics
     public final Timer assignLatency;
     public final Timer selfAssignLatency;
     public final Timer stopLatency;
+    public final Gauge<Integer> executorOrdinalGauage;
+    public int executorOrdinal = UNASSIGNED_EXECUTOR_ORDINAL;
 
-    public SEPWorkerMetrics(final ThreadGroup threadGroup, final Thread worker) {
+    public SEPWorkerMetrics(final ThreadGroup threadGroup,
+                            final long workerId) {
         this.nameFactory = new SEPWorkerMetricNameFactory(
             threadGroup.getName(),
-            worker
+            workerId
         );
         this.runLatency = timer("RunLatency");
         this.taskRunLatency = timer("TaskRunLatency");
@@ -55,12 +67,37 @@ public class SEPWorkerMetrics
         this.assignLatency = timer("AssignLatency");
         this.selfAssignLatency = timer("SelfAssignLatency");
         this.stopLatency = timer("StopLatency");
+        this.executorOrdinalGauage = gauge("ExecutorOrdinal", () -> this.executorOrdinal);
+    }
+
+    public void setExecutorOrdinal(final String executorName) {
+        if (executorName.equals(UNASSIGNED_EXECUTOR_NAME)) {
+            this.executorOrdinal = UNASSIGNED_EXECUTOR_ORDINAL;
+            return;
+        } else if (executorName.equals("Native-Transport-Requests")) {
+            this.executorOrdinal = 13;
+            return;
+        } else if (executorName.equals("Natuve-Transport-Auth-Requests")) {
+            this.executorOrdinal = 14;
+            return;
+        }
+        final Stage stage = Stage.fromPoolName(executorName);
+        this.executorOrdinal = stage.ordinal();
     }
 
     private Timer timer(final String name) {
         final CassandraMetricsRegistry.MetricName metricName = this.nameFactory.createMetricName(name);
         register(metricName);
         return Metrics.timer(metricName);
+    }
+
+    private Gauge<Integer> gauge(final String name, final Supplier<Integer> source) {
+        final CassandraMetricsRegistry.MetricName metricName = this.nameFactory.createMetricName(name);
+        register(metricName);
+        return Metrics.register(
+            metricName,
+            source::get
+        );
     }
 
     private Counter counterExternal(final String name, Supplier<Integer> source) {
@@ -98,30 +135,29 @@ public class SEPWorkerMetrics
     {
 
         private final String threadGroup;
-        private final Thread worker;
+        private final long workerId;
 
         public SEPWorkerMetricNameFactory(final String threadGroup,
-                                          final Thread worker) {
+                                          final long workerId) {
             this.threadGroup = threadGroup;
-            this.worker = worker;
+            this.workerId = workerId;
         }
 
         @Override
         public CassandraMetricsRegistry.MetricName createMetricName(final String metricName)
         {
             final String groupName = SEPWorkerMetrics.class.getPackage().getName();
-            final String workerName = this.worker.getName();
             final String mbeanName = groupName
                                + ':'
-                               + "type=SEPWorker,"
-                               + "threadgroup=" + this.threadGroup
-                               + ",scope=" + workerName
+                               + "type=SEPWorker"
+                               + ",threadgroup=" + this.threadGroup
+                               + ",scope=" + this.workerId
                                + ",name=" + metricName;
             return new CassandraMetricsRegistry.MetricName(
                 groupName,
                 "SEPWorker",
                 metricName,
-                workerName,
+                String.valueOf(this.workerId),
                 mbeanName
             );
         }

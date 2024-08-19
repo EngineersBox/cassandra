@@ -61,6 +61,10 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
         this.pool = pool;
         this.workerId = workerId;
         this.threadGroup = threadGroup;
+        this.metrics = new SEPWorkerMetrics(
+            threadGroup,
+            workerId
+        );
         thread = new FastThreadLocalThread(threadGroup, this, threadGroup.getName() + "-Worker-" + workerId);
         thread.setDaemon(true);
         set(initialState);
@@ -87,11 +91,6 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 
     public void run()
     {
-        if (this.metrics != null) {
-            this.metrics.release();
-            this.metrics = null;
-        }
-        this.metrics = new SEPWorkerMetrics(threadGroup, Thread.currentThread());
         /*
          * we maintain two important invariants:
          * 1)   after exiting spinning phase, we ensure at least one more task on _each_ queue will be processed
@@ -162,14 +161,14 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
                 if (SET_THREAD_NAME)
                 {
 //                    logger.info(
-//                        "[{}] Renamed thread {} => {}-{} {}",
+//                        "[{}] Renamed thread {} => {}-{}",
 //                        workerId,
 //                        Thread.currentThread().getName(),
-//                        assigned.name, workerId,
-//                        Clock.Global.nanoTime() - _start
+//                        assigned.name, workerId
 //                    );
-                    Thread.currentThread().setName(assigned.name + '-' + workerId);
+                    Thread.currentThread().setName(assigned.stageName + '-' + workerId);
                 }
+                this.metrics.setExecutorOrdinal(assigned.name);
 //                logger.info(
 //                    "[{}] Pending tasks before {} {}",
 //                    workerId,

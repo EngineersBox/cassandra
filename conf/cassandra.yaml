@@ -716,7 +716,7 @@ concurrent_materialized_view_writes: 32
 # Possible values are:
 # ssd (for solid state disks, the default)
 # spinning (for spinning disks)
-# disk_optimization_strategy: ssd
+disk_optimization_strategy: ssd
 
 # Supported memtable implementations and selected default.
 # Currently Cassandra offers two memtable implementations:
