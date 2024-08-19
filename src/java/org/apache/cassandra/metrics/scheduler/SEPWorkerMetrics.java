@@ -80,6 +80,7 @@ public class SEPWorkerMetrics
             case "STOPPED": this.workStateOrdinal = 1; break;
             case "SPINNING": this.workStateOrdinal = 2; break;
             case "WORKING": this.workStateOrdinal = 3; break;
+            case "ASSIGNED": this.workStateOrdinal = 4; break;
             default: throw new IllegalStateException("Unknown work state: " + workState);
         }
     }
