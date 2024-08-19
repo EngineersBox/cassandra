@@ -77,10 +77,11 @@ public class SEPWorkerMetrics
     public void setWorkStateOrdinal(final SEPWorker.Work workState) {
         switch (workState.toString()) {
             case "STOP_SIGNALLED": this.workStateOrdinal = 0; break;
-            case "STOPPED": this.workStateOrdinal = 1; break;
-            case "SPINNING": this.workStateOrdinal = 2; break;
-            case "WORKING": this.workStateOrdinal = 3; break;
-            case "ASSIGNED": this.workStateOrdinal = 4; break;
+            case "STOPPED_SIGNALLED": this.workStateOrdinal = 1; break;
+            case "STOPPED": this.workStateOrdinal = 2; break;
+            case "SPINNING": this.workStateOrdinal = 3; break;
+            case "WORKING": this.workStateOrdinal = 4; break;
+            case "ASSIGNED": this.workStateOrdinal = 5; break;
             default: throw new IllegalStateException("Unknown work state: " + workState);
         }
     }
