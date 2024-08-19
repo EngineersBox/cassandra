@@ -29,6 +29,7 @@ import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
+import org.apache.cassandra.concurrent.SEPWorker;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.metrics.CassandraMetricsRegistry;
 import org.apache.cassandra.metrics.MetricNameFactory;
@@ -51,7 +52,9 @@ public class SEPWorkerMetrics
     public final Timer assignLatency;
     public final Timer selfAssignLatency;
     public final Timer stopLatency;
-    public final Gauge<Integer> executorOrdinalGauage;
+    public final Gauge<Integer> executorOrdinalGauge;
+    public final Gauge<Integer> workStateOrdinalGauge;
+    public int workStateOrdinal = 0;
     public int executorOrdinal = UNASSIGNED_EXECUTOR_ORDINAL;
 
     public SEPWorkerMetrics(final ThreadGroup threadGroup,
@@ -67,7 +70,18 @@ public class SEPWorkerMetrics
         this.assignLatency = timer("AssignLatency");
         this.selfAssignLatency = timer("SelfAssignLatency");
         this.stopLatency = timer("StopLatency");
-        this.executorOrdinalGauage = gauge("ExecutorOrdinal", () -> this.executorOrdinal);
+        this.executorOrdinalGauge = gauge("ExecutorOrdinal", () -> this.executorOrdinal);
+        this.workStateOrdinalGauge = gauge("WorkStateOrdinal", () -> this.workStateOrdinal);
+    }
+
+    public void setWorkStateOrdinal(final SEPWorker.Work workState) {
+        switch (workState.toString()) {
+            case "STOP_SIGNALLED": this.workStateOrdinal = 0; break;
+            case "STOPPED": this.workStateOrdinal = 1; break;
+            case "SPINNING": this.workStateOrdinal = 2; break;
+            case "WORKING": this.workStateOrdinal = 3; break;
+            default: throw new IllegalStateException("Unknown work state: " + workState);
+        }
     }
 
     public void setExecutorOrdinal(final String executorName) {

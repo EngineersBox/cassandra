@@ -35,7 +35,7 @@ import static org.apache.cassandra.concurrent.SEPExecutor.TakeTaskPermitResult.T
 import static org.apache.cassandra.config.CassandraRelevantProperties.SET_SEP_THREAD_NAME;
 import static org.apache.cassandra.utils.Clock.Global.nanoTime;
 
-final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnable
+public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnable
 {
     private static final Logger logger = LoggerFactory.getLogger(SEPWorker.class);
     private static final boolean SET_THREAD_NAME = SET_SEP_THREAD_NAME.getBoolean();
@@ -65,6 +65,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
             threadGroup,
             workerId
         );
+        this.metrics.setWorkStateOrdinal(initialState);
         thread = new FastThreadLocalThread(threadGroup, this, threadGroup.getName() + "-Worker-" + workerId);
         thread.setDaemon(true);
         set(initialState);
@@ -380,6 +381,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //                        end,
 //                        end - start
 //                    );
+                    this.metrics.setWorkStateOrdinal(work);
                     this.metrics.assignLatency.update(
                         Clock.Global.nanoTime() - start,
                         TimeUnit.NANOSECONDS
@@ -412,6 +414,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //                end,
 //                end - start
 //            );
+            this.metrics.setWorkStateOrdinal(work);
             this.metrics.assignLatency.update(
                 Clock.Global.nanoTime() - start,
                 TimeUnit.NANOSECONDS
@@ -425,6 +428,7 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
 //            end,
 //            end - start
 //        );
+        this.metrics.setWorkStateOrdinal(work);
         this.metrics.assignLatency.update(
             Clock.Global.nanoTime() - start,
             TimeUnit.NANOSECONDS
@@ -729,15 +733,15 @@ final class SEPWorker extends AtomicReference<SEPWorker.Work> implements Runnabl
      * -> SPINNING|(ASSIGNED)
      */
 
-    static final class Work
+    public static final class Work
     {
-        static final Work STOP_SIGNALLED = new Work("STOPPED_SIGNALLED");
-        static final Work STOPPED = new Work("STOPPED");
-        static final Work SPINNING = new Work("SPINNING");
-        static final Work WORKING = new Work("WORKING");
+        public static final Work STOP_SIGNALLED = new Work("STOPPED_SIGNALLED");
+        public static final Work STOPPED = new Work("STOPPED");
+        public static final Work SPINNING = new Work("SPINNING");
+        public static final Work WORKING = new Work("WORKING");
 
         final SEPExecutor assigned;
-        final String label;
+        public final String label;
 
         Work(SEPExecutor executor)
         {
