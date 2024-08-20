@@ -97,14 +97,15 @@ public class SharedExecutorPoolMetrics
         public CassandraMetricsRegistry.MetricName createMetricName(final String metricName)
         {
             final String groupName = SharedExecutorPoolMetrics.class.getPackage().getName();
-            String mbeanName = groupName
+            final String mbeanName = groupName
                                + ':'
                                + "type=SharedExecutorPool"
                                + ",name=" + metricName;
             return new CassandraMetricsRegistry.MetricName(
                 groupName,
                 "SharedExecutorPool",
-                "SharedExecutorPool " + metricName,
+                metricName,
+                null,
                 mbeanName
             );
         }
