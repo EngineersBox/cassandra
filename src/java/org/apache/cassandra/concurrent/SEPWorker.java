@@ -17,7 +17,7 @@
  */
 package org.apache.cassandra.concurrent;
 
-import java.util.concurrent.ThreadLocalRandom;
+//import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
@@ -65,11 +65,15 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
             threadGroup,
             workerId
         );
-        this.metrics.setWorkStateOrdinal(initialState);
         thread = new FastThreadLocalThread(threadGroup, this, threadGroup.getName() + "-Worker-" + workerId);
         thread.setDaemon(true);
-        set(initialState);
+        setWork(initialState);
         thread.start();
+    }
+
+    public void setWork(final SEPWorker.Work work) {
+        set(work);
+        this.metrics.setWorkStateOrdinal(work);
     }
 
     /**
@@ -181,7 +185,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 
                 // if we do have tasks assigned, nobody will change our state so we can simply set it to WORKING
                 // (which is also a state that will never be interrupted externally)
-                set(Work.WORKING);
+                setWork(Work.WORKING);
 //                logger.info("[{}] Set to WORKING state {}", workerId, Clock.Global.nanoTime() - _start);
                 boolean shutdown;
                 SEPExecutor.TakeTaskPermitResult status = null; // make sure set if shutdown check short circuits
@@ -302,7 +306,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 if (get().assigned != null)
                 {
                     assigned = get().assigned;
-                    set(Work.WORKING);
+                    setWork(Work.WORKING);
                 }
                 if (assign(Work.STOPPED, true))
                     break;
@@ -359,6 +363,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 state = get();
                 continue;
             }
+            this.metrics.setWorkStateOrdinal(work);
 //            logger.info("[{}] CAS work state succeeded {}", workerId, Clock.Global.nanoTime() - start);
             // if we were spinning, exit the state (decrement the count); this is valid even if we are already spinning,
             // as the assigning thread will have incremented the spinningCount
@@ -381,7 +386,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 //                        end,
 //                        end - start
 //                    );
-                    this.metrics.setWorkStateOrdinal(work);
                     this.metrics.assignLatency.update(
                         Clock.Global.nanoTime() - start,
                         TimeUnit.NANOSECONDS
@@ -414,7 +418,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 //                end,
 //                end - start
 //            );
-            this.metrics.setWorkStateOrdinal(work);
             this.metrics.assignLatency.update(
                 Clock.Global.nanoTime() - start,
                 TimeUnit.NANOSECONDS
@@ -428,7 +431,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 //            end,
 //            end - start
 //        );
-        this.metrics.setWorkStateOrdinal(work);
         this.metrics.assignLatency.update(
             Clock.Global.nanoTime() - start,
             TimeUnit.NANOSECONDS
@@ -519,7 +521,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 //        logger.info("[{}] startSpinning() {}", workerId, Clock.Global.nanoTime());
         assert get() == Work.WORKING;
         pool.spinningCount.incrementAndGet();
-        set(Work.SPINNING);
+        setWork(Work.SPINNING);
     }
 
     // exit the spinning state; if there are no remaining spinners, we immediately try and schedule work for all executors
@@ -565,10 +567,13 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 //        logger.info("[{}] Start doWaitSpin() {}", workerId, start);
         // pick a random sleep interval based on the number of threads spinning, so that
         // we should always have a thread about to wake up, but most threads are sleeping
-        long sleep = 10000L * pool.spinningCount.get();
-        sleep = Math.min(1000000, sleep);
-        sleep *= ThreadLocalRandom.current().nextDouble();
-        sleep = Math.max(10000, sleep);
+//        long sleep = 10000L * pool.spinningCount.get();
+//        sleep = Math.min(1000000, sleep);
+//        sleep *= ThreadLocalRandom.current().nextDouble();
+//        sleep = Math.max(10000, sleep);
+
+        // Minimise sleep operations to see if throughput improves
+        long sleep = 1;
 
         long start = nanoTime();
 
