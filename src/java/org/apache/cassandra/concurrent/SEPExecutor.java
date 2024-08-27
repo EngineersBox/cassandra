@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.utils.Clock;
 import org.apache.cassandra.utils.WithResources;
 import org.apache.cassandra.utils.concurrent.Future;
@@ -111,6 +112,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 
     // schedules another worker for this pool if there is work outstanding and there are no spinning threads that
     // will self-assign to it in the immediate future
+    @WithSpan
     boolean maybeSchedule()
     {
         if (pool.spinningCount.get() > 0 || !takeWorkPermit(true))
@@ -120,6 +122,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         return true;
     }
 
+    @WithSpan
     protected <T extends Runnable> T addTask(T task)
     {
         // we add to the queue first, so that when a worker takes a task permit it can be certain there is a task available
@@ -170,6 +173,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 
     // takes permission to perform a task, if any are available; once taken it is guaranteed
     // that a proceeding call to tasks.poll() will return some work
+    @WithSpan
     TakeTaskPermitResult takeTaskPermit(boolean checkForWorkPermitOvercommit)
     {
         TakeTaskPermitResult result;
@@ -239,6 +243,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     }
 
     // takes a worker permit and (optionally) a task permit simultaneously; if one of the two is unavailable, returns false
+    @WithSpan
     boolean takeWorkPermit(boolean takeTaskPermit)
     {
         final long start = Clock.Global.nanoTime();
@@ -295,6 +300,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     }
 
     // gives up a work permit
+    @WithSpan
     void returnWorkPermit()
     {
         final long start = Clock.Global.nanoTime();
@@ -327,6 +333,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
      * do so. Otherwise, submits the task to be scheduled later.
      * @param task
      */
+    @WithSpan
     @Override
     public void maybeExecuteImmediately(Runnable task)
     {
@@ -368,48 +375,56 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         );
     }
 
+    @WithSpan
     @Override
     public void execute(Runnable run)
     {
         addTask(taskFactory.toExecute(run));
     }
 
+    @WithSpan
     @Override
     public void execute(WithResources withResources, Runnable run)
     {
         addTask(taskFactory.toExecute(withResources, run));
     }
 
+    @WithSpan
     @Override
     public Future<?> submit(Runnable run)
     {
         return addTask(taskFactory.toSubmit(run));
     }
 
+    @WithSpan
     @Override
     public <T> Future<T> submit(Runnable run, T result)
     {
         return addTask(taskFactory.toSubmit(run, result));
     }
 
+    @WithSpan
     @Override
     public <T> Future<T> submit(Callable<T> call)
     {
         return addTask(taskFactory.toSubmit(call));
     }
 
+    @WithSpan
     @Override
     public <T> Future<T> submit(WithResources withResources, Runnable run, T result)
     {
         return addTask(taskFactory.toSubmit(withResources, run, result));
     }
 
+    @WithSpan
     @Override
     public Future<?> submit(WithResources withResources, Runnable run)
     {
         return addTask(taskFactory.toSubmit(withResources, run));
     }
 
+    @WithSpan
     @Override
     public <T> Future<T> submit(WithResources withResources, Callable<T> call)
     {
@@ -494,6 +509,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         return maximumPoolSize.get();
     }
 
+    @WithSpan
     @Override
     public synchronized void setMaximumPoolSize(int newMaximumPoolSize)
     {

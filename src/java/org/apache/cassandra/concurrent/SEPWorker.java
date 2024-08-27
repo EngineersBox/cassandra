@@ -17,7 +17,7 @@
  */
 package org.apache.cassandra.concurrent;
 
-//import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.util.concurrent.FastThreadLocalThread;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.metrics.scheduler.SEPWorkerMetrics;
 import org.apache.cassandra.utils.Clock;
 import org.apache.cassandra.utils.JVMStabilityInspector;
@@ -71,6 +72,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         thread.start();
     }
 
+    @WithSpan
     public void setWork(final SEPWorker.Work work) {
         set(work);
         this.metrics.setWorkStateOrdinal(work);
@@ -94,6 +96,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         return null;
     }
 
+    @WithSpan
     public void run()
     {
         /*
@@ -341,6 +344,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     // try to assign this worker the provided work
     // valid states to assign are SPINNING, STOP_SIGNALLED, (ASSIGNED);
     // restores invariants of the various states (e.g. spinningCount, descheduled collection and thread park status)
+    @WithSpan
     boolean assign(Work work, boolean self)
     {
         Work state = get();
@@ -439,6 +443,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     }
 
     // try to assign ourselves an executor with work available
+    @WithSpan
     private boolean selfAssign()
     {
         final long start = Clock.Global.nanoTime();
@@ -516,6 +521,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     // we can only call this when our state is WORKING, and no other thread may change our state in this case;
     // so in this case only we do not need to CAS. We increment the spinningCount and add ourselves to the spinning
     // collection at the same time
+    @WithSpan
     private void startSpinning()
     {
 //        logger.info("[{}] startSpinning() {}", workerId, Clock.Global.nanoTime());
@@ -526,6 +532,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 
     // exit the spinning state; if there are no remaining spinners, we immediately try and schedule work for all executors
     // so that any producer is safe to not spin up a worker when they see a spinning thread (invariant (1) above)
+    @WithSpan
     private void stopSpinning()
     {
 //        final long start = Clock.Global.nanoTime();
@@ -561,19 +568,20 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     }
 
     // perform a sleep-spin, incrementing pool.stopCheck accordingly
+    @WithSpan
     private void doWaitSpin()
     {
         final long _start = Clock.Global.nanoTime();
 //        logger.info("[{}] Start doWaitSpin() {}", workerId, start);
         // pick a random sleep interval based on the number of threads spinning, so that
         // we should always have a thread about to wake up, but most threads are sleeping
-//        long sleep = 10000L * pool.spinningCount.get();
-//        sleep = Math.min(1000000, sleep);
-//        sleep *= ThreadLocalRandom.current().nextDouble();
-//        sleep = Math.max(10000, sleep);
+        long sleep = 10000L * pool.spinningCount.get();
+        sleep = Math.min(1000000, sleep);
+        sleep *= ThreadLocalRandom.current().nextDouble();
+        sleep = Math.max(10000, sleep);
 
         // Minimise sleep operations to see if throughput improves
-        long sleep = 1;
+//        long sleep = 1;
 
         long start = nanoTime();
 
@@ -608,6 +616,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     // at least one worker achieved nothing in the interval. we achieve this by maintaining a stopCheck which
     // is initialised to a negative offset from realtime; as we spin we add to this value, and if we ever exceed
     // realtime we have spun too much and deschedule; if we get too far behind realtime, we reset to our initial offset
+    @WithSpan
     private void maybeStop(long stopCheck, long now)
     {
         final long start = Clock.Global.nanoTime();

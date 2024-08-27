@@ -40,6 +40,7 @@ import org.slf4j.LoggerFactory;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistryListener;
 import com.codahale.metrics.SharedMetricRegistries;
+import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
 import org.apache.cassandra.audit.AuditLogManager;
 import org.apache.cassandra.auth.AuthCacheService;
 import org.apache.cassandra.concurrent.ScheduledExecutors;
@@ -855,6 +856,7 @@ public class CassandraDaemon
         }
     }
 
+
     public static void stop(String[] args)
     {
         instance.deactivate();
@@ -862,6 +864,7 @@ public class CassandraDaemon
 
     public static void main(String[] args)
     {
+        AutoConfiguredOpenTelemetrySdk.initialize();
         instance.activate();
     }
 
