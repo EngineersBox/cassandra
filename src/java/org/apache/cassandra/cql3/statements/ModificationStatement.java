@@ -25,6 +25,7 @@ import com.google.common.collect.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.db.guardrails.Guardrails;
 import org.apache.cassandra.dht.Token;
@@ -488,6 +489,7 @@ public abstract class ModificationStatement implements CQLStatement.SingleKeyspa
                && getRestrictions().isColumnRange();
     }
 
+    @WithSpan
     public ResultMessage execute(QueryState queryState, QueryOptions options, Dispatcher.RequestTime requestTime)
     throws RequestExecutionException, RequestValidationException
     {
@@ -502,6 +504,7 @@ public abstract class ModificationStatement implements CQLStatement.SingleKeyspa
              : executeWithoutCondition(queryState, options, requestTime);
     }
 
+    @WithSpan
     private ResultMessage executeWithoutCondition(QueryState queryState, QueryOptions options, Dispatcher.RequestTime requestTime)
     throws RequestExecutionException, RequestValidationException
     {
@@ -535,6 +538,7 @@ public abstract class ModificationStatement implements CQLStatement.SingleKeyspa
         return null;
     }
 
+    @WithSpan
     private ResultMessage executeWithCondition(QueryState queryState, QueryOptions options, Dispatcher.RequestTime requestTime)
     {
         CQL3CasRequest request = makeCasRequest(queryState, options);

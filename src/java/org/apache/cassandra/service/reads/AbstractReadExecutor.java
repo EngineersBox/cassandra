@@ -21,6 +21,7 @@ import com.google.common.base.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.ConsistencyLevel;
@@ -131,6 +132,7 @@ public abstract class AbstractReadExecutor
         makeRequests(command.copyAsDigestQuery(replicas), replicas);
     }
 
+    @WithSpan
     private void makeRequests(ReadCommand readCommand, Iterable<Replica> replicas)
     {
         boolean hasLocalEndpoint = false;

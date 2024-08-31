@@ -33,6 +33,7 @@ import com.google.common.collect.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.audit.AuditLogContext;
 import org.apache.cassandra.audit.AuditLogEntryType;
 import org.apache.cassandra.auth.Permission;
@@ -277,6 +278,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
             Guardrails.allowFilteringEnabled.ensureEnabled(state);
     }
 
+    @WithSpan
     public ResultMessage.Rows execute(QueryState state, QueryOptions options, Dispatcher.RequestTime requestTime)
     {
         ConsistencyLevel cl = options.getConsistency();
@@ -411,6 +413,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         return getSliceCommands(options, state, columnFilter, limit, nowInSec);
     }
 
+    @WithSpan
     private ResultMessage.Rows execute(ReadQuery query,
                                        QueryOptions options,
                                        ClientState state,
@@ -500,6 +503,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         }
     }
 
+    @WithSpan
     private ResultMessage.Rows execute(QueryState state,
                                        Pager pager,
                                        QueryOptions options,

@@ -48,6 +48,7 @@ import com.google.common.util.concurrent.Uninterruptibles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.batchlog.Batch;
 import org.apache.cassandra.batchlog.BatchlogManager;
 import org.apache.cassandra.concurrent.DebuggableTask.RunnableDebuggableTask;
@@ -1854,6 +1855,7 @@ public class StorageProxy implements StorageProxyMBean
      * Performs the actual reading of a row out of the StorageService, fetching
      * a specific set of column names from a given column family.
      */
+    @WithSpan
     public static PartitionIterator read(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel, Dispatcher.RequestTime requestTime)
     throws UnavailableException, IsBootstrappingException, ReadFailureException, ReadTimeoutException, InvalidRequestException
     {
@@ -2000,6 +2002,7 @@ public class StorageProxy implements StorageProxyMBean
         return result;
     }
 
+    @WithSpan
     @SuppressWarnings("resource")
     private static PartitionIterator readRegular(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel, Dispatcher.RequestTime requestTime)
     throws UnavailableException, ReadFailureException, ReadTimeoutException
@@ -2102,6 +2105,7 @@ public class StorageProxy implements StorageProxyMBean
      * 4. If the digests (if any) match the data return the data
      * 5. else carry out read repair by getting data from all the nodes.
      */
+    @WithSpan
     private static PartitionIterator fetchRows(List<SinglePartitionReadCommand> commands,
                                                ConsistencyLevel consistencyLevel,
                                                Dispatcher.RequestTime requestTime)
@@ -2273,6 +2277,7 @@ public class StorageProxy implements StorageProxyMBean
         }
     }
 
+    @WithSpan
     public static PartitionIterator getRangeSlice(PartitionRangeReadCommand command,
                                                   ConsistencyLevel consistencyLevel,
                                                   Dispatcher.RequestTime requestTime)

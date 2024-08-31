@@ -31,6 +31,7 @@ import java.util.stream.Collectors;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cache.IRowCacheEntry;
 import org.apache.cassandra.cache.RowCacheKey;
 import org.apache.cassandra.cache.RowCacheSentinel;
@@ -462,6 +463,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
         return cmd;
     }
 
+    @WithSpan
     @Override
     public PartitionIterator execute(ConsistencyLevel consistency, ClientState state, Dispatcher.RequestTime requestTime) throws RequestExecutionException
     {

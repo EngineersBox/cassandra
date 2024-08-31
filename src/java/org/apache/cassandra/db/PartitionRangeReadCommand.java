@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.filter.ClusteringIndexFilter;
 import org.apache.cassandra.db.filter.ColumnFilter;
@@ -305,6 +306,7 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
         return dataRange.isReversed();
     }
 
+    @WithSpan
     public PartitionIterator execute(ConsistencyLevel consistency, ClientState state, Dispatcher.RequestTime requestTime) throws RequestExecutionException
     {
         return StorageProxy.getRangeSlice(this, consistency, requestTime);

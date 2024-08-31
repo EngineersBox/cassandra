@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.concurrent.DebuggableTask.RunningDebuggableTask;
 import org.apache.cassandra.metrics.scheduler.SharedExecutorPoolMetrics;
@@ -112,7 +113,7 @@ public class SharedExecutorPool
     }
 
     @WithSpan
-    void schedule(Work work)
+    void schedule(@SpanAttribute Work work)
     {
         final long start = Clock.Global.nanoTime();
 //        logger.info("[SEP] Start schedule({}) {}", work.label, start);
@@ -172,7 +173,7 @@ public class SharedExecutorPool
     }
 
     @WithSpan
-    void workerEnded(SEPWorker worker)
+    void workerEnded(@SpanAttribute SEPWorker worker)
     {
 //        logger.info("[SEP] Worker ended, removing {} {}", worker.workerId, Clock.Global.nanoTime());
         worker.metrics.release();

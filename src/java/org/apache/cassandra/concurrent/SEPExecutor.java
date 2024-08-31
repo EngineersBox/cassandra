@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.utils.Clock;
 import org.apache.cassandra.utils.WithResources;
@@ -174,7 +175,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     // takes permission to perform a task, if any are available; once taken it is guaranteed
     // that a proceeding call to tasks.poll() will return some work
     @WithSpan
-    TakeTaskPermitResult takeTaskPermit(boolean checkForWorkPermitOvercommit)
+    TakeTaskPermitResult takeTaskPermit(@SpanAttribute boolean checkForWorkPermitOvercommit)
     {
         TakeTaskPermitResult result;
         final long start = Clock.Global.nanoTime();
@@ -244,7 +245,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 
     // takes a worker permit and (optionally) a task permit simultaneously; if one of the two is unavailable, returns false
     @WithSpan
-    boolean takeWorkPermit(boolean takeTaskPermit)
+    boolean takeWorkPermit(@SpanAttribute boolean takeTaskPermit)
     {
         final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] takeWorkPermit({}) {}", name, takeTaskPermit, start);
@@ -511,7 +512,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 
     @WithSpan
     @Override
-    public synchronized void setMaximumPoolSize(int newMaximumPoolSize)
+    public synchronized void setMaximumPoolSize(@SpanAttribute int newMaximumPoolSize)
     {
         final int oldMaximumPoolSize = maximumPoolSize.get();
 
