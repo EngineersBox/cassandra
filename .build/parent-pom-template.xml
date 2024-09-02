@@ -1290,6 +1290,16 @@
         <artifactId>opentelemetry-instrumentation-annotations</artifactId>
         <version>2.7.0</version>
       </dependency>
+      <dependency>
+        <groupId>io.grpc</groupId>
+        <artifactId>grpc-api</artifactId>
+        <version>1.66.0</version>
+      </dependency>
+      <dependency>
+        <groupId>io.grpc</groupId>
+        <artifactId>grpc-core</artifactId>
+        <version>1.66.0</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 </project>
