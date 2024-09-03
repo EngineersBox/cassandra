@@ -26,6 +26,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.utils.Shared;
 import org.apache.cassandra.utils.WithResources;
 import org.apache.cassandra.utils.concurrent.Future;
@@ -52,6 +53,7 @@ public interface ExecutorPlus extends ExecutorService, ResizableThreadPool
     /**
      * MAY execute {@code task} immediately, if the calling thread is permitted to do so.
      */
+    @WithSpan
     default void maybeExecuteImmediately(Runnable task)
     {
         execute(task);

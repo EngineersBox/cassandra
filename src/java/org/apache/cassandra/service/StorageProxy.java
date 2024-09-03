@@ -2197,6 +2197,7 @@ public class StorageProxy implements StorageProxyMBean
             this.trackRepairedStatus = trackRepairedStatus;
         }
 
+        @WithSpan
         protected void runMayThrow()
         {
             try
@@ -2597,6 +2598,7 @@ public class StorageProxy implements StorageProxyMBean
             this.requestTime = requestTime;
         }
 
+        @WithSpan
         public final void run()
         {
             long nowNanos = MonotonicClock.Global.preciseTime.now();
@@ -2635,6 +2637,7 @@ public class StorageProxy implements StorageProxyMBean
             this.requestTime = requestTime;
         }
 
+        @WithSpan
         public final void run()
         {
             final Verb verb = verb();

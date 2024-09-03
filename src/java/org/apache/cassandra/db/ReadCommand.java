@@ -36,6 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.util.concurrent.FastThreadLocal;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.config.*;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.exceptions.QueryCancelledException;
@@ -400,6 +401,7 @@ public abstract class ReadCommand extends AbstractReadQuery
      * @return an iterator over the result of executing this command locally.
      */
                                   // iterators created inside the try as long as we do close the original resultIterator), or by closing the result.
+    @WithSpan
     public UnfilteredPartitionIterator executeLocally(ReadExecutionController executionController)
     {
         long startTimeNanos = nanoTime();

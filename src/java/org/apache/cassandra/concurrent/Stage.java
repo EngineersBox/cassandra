@@ -30,6 +30,7 @@ import java.util.stream.Stream;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.net.Verb;
@@ -122,11 +123,17 @@ public enum Stage
     }
 
     // Convenience functions to execute on this stage
+    @WithSpan
     public void execute(Runnable task) { executor().execute(task); }
+    @WithSpan
     public void execute(ExecutorLocals locals, Runnable task) { executor().execute(locals, task); }
+    @WithSpan
     public void maybeExecuteImmediately(Runnable task) { executor().maybeExecuteImmediately(task); }
+    @WithSpan
     public <T> Future<T> submit(Callable<T> task) { return executor().submit(task); }
+    @WithSpan
     public Future<?> submit(Runnable task) { return executor().submit(task); }
+    @WithSpan
     public <T> Future<T> submit(Runnable task, T result) { return executor().submit(task, result); }
 
     public ExecutorPlus executor()

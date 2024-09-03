@@ -20,6 +20,8 @@ package org.apache.cassandra.concurrent;
 
 import java.util.concurrent.Callable;
 
+import io.opentelemetry.context.Context;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.concurrent.DebuggableTask.RunnableDebuggableTask;
 import org.apache.cassandra.utils.Shared;
 import org.apache.cassandra.utils.WithResources;
@@ -58,36 +60,42 @@ public interface TaskFactory
         protected Standard() {}
 
         @Override
+        @WithSpan
         public Runnable toExecute(Runnable runnable)
         {
             return ExecutionFailure.suppressing(runnable);
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(Runnable runnable)
         {
             return newTask(callable(runnable));
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(Runnable runnable, T result)
         {
-            return newTask(callable(runnable, result));
+            return newTask(callable(Context.current().wrap(runnable), result));
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(Callable<T> callable)
         {
             return newTask(callable);
         }
 
         @Override
+        @WithSpan
         public Runnable toExecute(WithResources withResources, Runnable runnable)
         {
             return ExecutionFailure.suppressing(withResources, runnable);
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(WithResources withResources, Runnable runnable)
         {
             return withResources.isNoOp() ? newTask(runnable)
@@ -95,6 +103,7 @@ public interface TaskFactory
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(WithResources withResources, Runnable runnable, T result)
         {
             return withResources.isNoOp() ? newTask(callable(runnable, result))
@@ -102,30 +111,35 @@ public interface TaskFactory
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(WithResources withResources, Callable<T> callable)
         {
             return withResources.isNoOp() ? newTask(callable)
                                           : newTask(withResources, callable);
         }
 
+        @WithSpan
         protected <T> RunnableFuture<T> newTask(Runnable task)
         {
-            return new FutureTask<>(task);
+            return new FutureTask<>(Context.current().wrap(task));
         }
 
+        @WithSpan
         protected <T> RunnableFuture<T> newTask(Callable<T> call)
         {
-            return new FutureTask<>(call);
+            return new FutureTask<>(Context.current().wrap(call));
         }
 
+        @WithSpan
         protected <T> RunnableFuture<T> newTask(WithResources withResources, Runnable task)
         {
-            return new FutureTaskWithResources<>(withResources, task);
+            return new FutureTaskWithResources<>(withResources, Context.current().wrap(task));
         }
 
+        @WithSpan
         protected <T> RunnableFuture<T> newTask(WithResources withResources, Callable<T> call)
         {
-            return new FutureTaskWithResources<>(withResources, call);
+            return new FutureTaskWithResources<>(withResources, Context.current().wrap(call));
         }
     }
 
@@ -136,6 +150,7 @@ public interface TaskFactory
         protected LocalAware() {}
 
         @Override
+        @WithSpan
         public Runnable toExecute(Runnable runnable)
         {
             if (runnable instanceof RunnableDebuggableTask)
@@ -146,47 +161,55 @@ public interface TaskFactory
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(Runnable runnable)
         {
             return super.toSubmit(ExecutorLocals.propagate(), runnable);
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(Runnable runnable, T result)
         {
             return super.toSubmit(ExecutorLocals.propagate(), runnable, result);
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(Callable<T> callable)
         {
             return super.toSubmit(ExecutorLocals.propagate(), callable);
         }
 
         @Override
+        @WithSpan
         public Runnable toExecute(WithResources withResources, Runnable runnable)
         {
             return ExecutionFailure.suppressing(withLocals(withResources), runnable);
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(WithResources withResources, Runnable runnable)
         {
             return super.toSubmit(withLocals(withResources), runnable);
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(WithResources withResources, Runnable runnable, T result)
         {
             return super.toSubmit(withLocals(withResources), runnable, result);
         }
 
         @Override
+        @WithSpan
         public <T> RunnableFuture<T> toSubmit(WithResources withResources, Callable<T> callable)
         {
             return super.toSubmit(withLocals(withResources), callable);
         }
 
+        @WithSpan
         private static WithResources withLocals(WithResources withResources)
         {
             return withResources instanceof ExecutorLocals ? withResources : ExecutorLocals.propagate().and(withResources);

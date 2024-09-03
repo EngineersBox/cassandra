@@ -113,7 +113,7 @@ public class SharedExecutorPool
     }
 
     @WithSpan
-    void schedule(@SpanAttribute Work work)
+    void schedule(@SpanAttribute("work") Work work)
     {
         final long start = Clock.Global.nanoTime();
 //        logger.info("[SEP] Start schedule({}) {}", work.label, start);
@@ -173,7 +173,7 @@ public class SharedExecutorPool
     }
 
     @WithSpan
-    void workerEnded(@SpanAttribute SEPWorker worker)
+    void workerEnded(@SpanAttribute("worker") SEPWorker worker)
     {
 //        logger.info("[SEP] Worker ended, removing {} {}", worker.workerId, Clock.Global.nanoTime());
         worker.metrics.release();

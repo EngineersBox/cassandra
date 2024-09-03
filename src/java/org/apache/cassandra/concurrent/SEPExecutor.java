@@ -26,6 +26,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.utils.Clock;
@@ -57,6 +60,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     private final String mbeanName;
     @VisibleForTesting
     public final ThreadPoolMetrics metrics;
+    private final Tracer tracer;
 
     // stores both a set of work permits and task permits:
     //  bottom 32 bits are number of queued tasks, in the range [0..maxTasksQueued]   (initially 0)
@@ -70,7 +74,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 
     // TODO: see if other queue implementations might improve throughput
 //    protected final ConcurrentLinkedQueue<Runnable> tasks = new ConcurrentLinkedQueue<>();
-    protected final MpmcUnboundedXaddArrayQueue<Runnable> tasks = new MpmcUnboundedXaddArrayQueue<>(32);
+    protected final MpmcUnboundedXaddArrayQueue<ContextualTask> tasks = new MpmcUnboundedXaddArrayQueue<>(32);
 
     SEPExecutor(SharedExecutorPool pool, int maximumPoolSize, MaximumPoolSizeListener maximumPoolSizeListener, String jmxPath, String name)
     {
@@ -82,6 +86,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         this.maximumPoolSizeListener = maximumPoolSizeListener;
         this.permits.set(combine(0, maximumPoolSize));
         this.metrics = new ThreadPoolMetrics(this, jmxPath, name).register();
+        this.tracer = GlobalOpenTelemetry.getTracerProvider().get("SEPExecutor");
         MBeanWrapper.instance.registerMBean(this, mbeanName);
     }
 
@@ -93,11 +98,11 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     @Override
     public long oldestTaskQueueTime()
     {
-        Runnable task = tasks.peek();
-        if (!(task instanceof FutureTask))
+        final ContextualTask task = tasks.peek();
+        if (task == null || !(task.runnable instanceof FutureTask))
             return 0L;
 
-        FutureTask<?> futureTask = (FutureTask<?>) task;
+        FutureTask<?> futureTask = (FutureTask<?>) task.runnable;
         DebuggableTask debuggableTask = futureTask.debuggableTask();
         if (debuggableTask == null)
             return 0L;
@@ -124,12 +129,12 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     }
 
     @WithSpan
-    protected <T extends Runnable> T addTask(T task)
+    protected <T extends Runnable> T addTask(@SpanAttribute("task") T task)
     {
         // we add to the queue first, so that when a worker takes a task permit it can be certain there is a task available
         // this permits us to schedule threads non-spuriously; it also means work is serviced fairly
         final long start = Clock.Global.nanoTime();
-        tasks.add(task);
+        tasks.add(new ContextualTask(task, Context.current()));
 //        logger.info("[{}] Start addTask {}", name, start);
         int taskPermits;
         while (true)
@@ -175,7 +180,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     // takes permission to perform a task, if any are available; once taken it is guaranteed
     // that a proceeding call to tasks.poll() will return some work
     @WithSpan
-    TakeTaskPermitResult takeTaskPermit(@SpanAttribute boolean checkForWorkPermitOvercommit)
+    TakeTaskPermitResult takeTaskPermit(@SpanAttribute("checkForWorkPermitOvercommit") boolean checkForWorkPermitOvercommit)
     {
         TakeTaskPermitResult result;
         final long start = Clock.Global.nanoTime();
@@ -205,7 +210,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             {
                 if (taskPermits == 0)
                 {
-                    final long end = Clock.Global.nanoTime();
+//                    final long end = Clock.Global.nanoTime();
 //                    logger.info(
 //                        "[{}] End takeTaskPermit({}) No task permits available {} Duration: {}",
 //                        name,
@@ -245,7 +250,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 
     // takes a worker permit and (optionally) a task permit simultaneously; if one of the two is unavailable, returns false
     @WithSpan
-    boolean takeWorkPermit(@SpanAttribute boolean takeTaskPermit)
+    boolean takeWorkPermit(@SpanAttribute("takeTaskPermit") boolean takeTaskPermit)
     {
         final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] takeWorkPermit({}) {}", name, takeTaskPermit, start);
@@ -336,11 +341,11 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
      */
     @WithSpan
     @Override
-    public void maybeExecuteImmediately(Runnable task)
+    public void maybeExecuteImmediately(@SpanAttribute("task") Runnable task)
     {
         final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] Start maybeExecuteImmediately() {}", name, start);
-        task = taskFactory.toExecute(task);
+        task = taskFactory.toExecute(Context.current().wrap(task));
         if (!takeWorkPermit(false))
         {
 //            logger.info(
@@ -356,7 +361,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             try
             {
 //                logger.info("[{}] Running task {}", name, Clock.Global.nanoTime() - start);
-                task.run();
+                Context.current().wrap(task).run();
             }
             finally
             {
@@ -380,56 +385,56 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     @Override
     public void execute(Runnable run)
     {
-        addTask(taskFactory.toExecute(run));
+        addTask(taskFactory.toExecute(Context.current().wrap(run)));
     }
 
     @WithSpan
     @Override
     public void execute(WithResources withResources, Runnable run)
     {
-        addTask(taskFactory.toExecute(withResources, run));
+        addTask(taskFactory.toExecute(withResources, Context.current().wrap(run)));
     }
 
     @WithSpan
     @Override
     public Future<?> submit(Runnable run)
     {
-        return addTask(taskFactory.toSubmit(run));
+        return addTask(taskFactory.toSubmit(Context.current().wrap(run)));
     }
 
     @WithSpan
     @Override
     public <T> Future<T> submit(Runnable run, T result)
     {
-        return addTask(taskFactory.toSubmit(run, result));
+        return addTask(taskFactory.toSubmit(Context.current().wrap(run), result));
     }
 
     @WithSpan
     @Override
     public <T> Future<T> submit(Callable<T> call)
     {
-        return addTask(taskFactory.toSubmit(call));
+        return addTask(taskFactory.toSubmit(Context.current().wrap(call)));
     }
 
     @WithSpan
     @Override
     public <T> Future<T> submit(WithResources withResources, Runnable run, T result)
     {
-        return addTask(taskFactory.toSubmit(withResources, run, result));
+        return addTask(taskFactory.toSubmit(withResources, Context.current().wrap(run), result));
     }
 
     @WithSpan
     @Override
     public Future<?> submit(WithResources withResources, Runnable run)
     {
-        return addTask(taskFactory.toSubmit(withResources, run));
+        return addTask(taskFactory.toSubmit(withResources, Context.current().wrap(run)));
     }
 
     @WithSpan
     @Override
     public <T> Future<T> submit(WithResources withResources, Callable<T> call)
     {
-        return addTask(taskFactory.toSubmit(withResources, call));
+        return addTask(taskFactory.toSubmit(withResources, Context.current().wrap(call)));
     }
 
     @Override
@@ -438,6 +443,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         throw new UnsupportedOperationException();
     }
 
+    @WithSpan
     public synchronized void shutdown()
     {
         if (shuttingDown)
@@ -457,7 +463,13 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         shutdown();
         List<Runnable> aborted = new ArrayList<>();
         while (takeTaskPermit(false) == TOOK_PERMIT)
-            aborted.add(tasks.poll());
+        {
+            final ContextualTask task = tasks.poll();
+            if (task != null)
+            {
+                aborted.add(task.runnable);
+            }
+        }
         return aborted;
     }
 
@@ -512,7 +524,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
 
     @WithSpan
     @Override
-    public synchronized void setMaximumPoolSize(@SpanAttribute int newMaximumPoolSize)
+    public synchronized void setMaximumPoolSize(@SpanAttribute("newMaximumPoolSize") int newMaximumPoolSize)
     {
         final int oldMaximumPoolSize = maximumPoolSize.get();
 

@@ -17,7 +17,6 @@
  */
 package org.apache.cassandra.concurrent;
 
-import java.time.Instant;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -31,6 +30,7 @@ import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.metrics.scheduler.SEPWorkerMetrics;
@@ -62,7 +62,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     long soleSpinnerSpinTime = 0;
     private long parkStart = 0;
 
-    private final AtomicReference<Runnable> currentTask = new AtomicReference<>();
+    private final AtomicReference<ContextualTask> currentTask = new AtomicReference<>();
 
     SEPWorker(ThreadGroup threadGroup, Long workerId, Work initialState, SharedExecutorPool pool)
     {
@@ -81,7 +81,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     }
 
     @WithSpan
-    public void setWork(@SpanAttribute final SEPWorker.Work work) {
+    public void setWork(@SpanAttribute("work") final SEPWorker.Work work) {
         set(work);
         this.metrics.setWorkStateOrdinal(work);
     }
@@ -92,19 +92,23 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     public DebuggableTask currentDebuggableTask()
     {
         // can change after null check so go off local reference
-        Runnable task = currentTask.get();
+        final ContextualTask task = currentTask.get();
+        if (task == null) {
+            return null;
+        }
 
         // Local read and mutation Runnables are themselves debuggable
-        if (task instanceof DebuggableTask)
+        if (task.runnable instanceof DebuggableTask)
             return (DebuggableTask) task;
 
-        if (task instanceof FutureTask)
-            return ((FutureTask<?>) task).debuggableTask();
+        if (task.runnable instanceof FutureTask)
+            return ((FutureTask<?>) task.runnable).debuggableTask();
             
         return null;
     }
 
-    @WithSpan
+    private Span parkSpan;
+
     public void run()
     {
         /*
@@ -120,7 +124,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
          */
 
         SEPExecutor assigned = null;
-        Runnable task = null;
+        ContextualTask task = null;
         final long start = Clock.Global.nanoTime();
         Span span;
 //        logger.info("[{}] Start run() {}", workerId, start);
@@ -128,18 +132,22 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         {
             while (true)
             {
-                span = this.tracer.spanBuilder("run-loop").startSpan();
+                // TODO: Need to attach a parent span to the work unit itself
+                //       in order to bind this together with that trace to form
+                //       a complete execution path
+                span = this.tracer.spanBuilder("run-loop")
+                                  .setParent(Context.current())
+                                  .startSpan();
 //                final long _start = Clock.Global.nanoTime();
 //                logger.info("[{}] Start run() iteration {}", workerId, _start);
                 if (pool.shuttingDown)
                 {
-                    final long now = Clock.Global.nanoTime();
+                    span.end();
                     this.metrics.runLatency.update(
-                        now - start,
+                        Clock.Global.nanoTime() - start,
                         TimeUnit.NANOSECONDS
                     );
                     this.metrics.release();
-                    span.end(Instant.ofEpochMilli(now));
                     return;
                 }
 
@@ -151,6 +159,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 //                    logger.info("[{}] End doWaitSpin() {}", workerId, Clock.Global.nanoTime() - _start);
                     // if the pool is terminating, but we have been assigned STOP_SIGNALLED, if we do not re-check
                     // whether the pool is shutting down this thread will go to sleep and block forever
+                    span.end();
                     continue;
                 }
 
@@ -167,6 +176,9 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                     while (isStopped())
                     {
                         parkStart = Clock.Global.nanoTime();
+                        parkSpan = this.tracer.spanBuilder("LockSupport.park")
+                                              .setParent(Context.current().with(span))
+                                              .startSpan();
                         LockSupport.park();
                     }
 //                    logger.info("[{}] Finished top parking {}", workerId, Clock.Global.nanoTime() - _start);
@@ -177,6 +189,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 if (assigned == null)
                 {
 //                    logger.info("[{}] No tasks assigned {}", workerId, Clock.Global.nanoTime() - _start);
+                    span.end();
                     continue;
                 }
                 if (SET_THREAD_NAME)
@@ -205,7 +218,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 //                logger.info("[{}] Set to WORKING state {}", workerId, Clock.Global.nanoTime() - _start);
                 boolean shutdown;
                 SEPExecutor.TakeTaskPermitResult status = null; // make sure set if shutdown check short circuits
-                Span innerSpan = this.tracer.spanBuilder("task_loop")
+                final Span innerSpan = this.tracer.spanBuilder("task_loop")
                                             .setParent(Context.current().with(span))
                                             .startSpan();
                 while (true)
@@ -218,12 +231,15 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                     assigned.maybeSchedule();
 
                     // we know there is work waiting, as we have a work permit, so poll() will always succeed
-                    Span taskSpan = this.tracer.spanBuilder("task.run")
+                    final Span taskSpan = this.tracer.spanBuilder("task.run")
                                     .setParent(Context.current().with(innerSpan))
                                     .startSpan();
                     final long startTask = Clock.Global.nanoTime();
 //                    logger.info("[{}] Start task.run() {}", workerId, startTask - _start);
-                    task.run();
+                    try (final Scope ignored = task.context.with(taskSpan).makeCurrent())
+                    {
+                        task.runnable.run();
+                    }
                     this.metrics.taskRunLatency.update(
                         Clock.Global.nanoTime() - startTask,
                         TimeUnit.NANOSECONDS
@@ -294,6 +310,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                         Clock.Global.nanoTime() - start,
                         TimeUnit.NANOSECONDS
                     );
+                    span.end();
                     return;
                 }
                 assigned = null;
@@ -319,6 +336,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 //                    end,
 //                    end - _start
 //                );
+                span.end();
             }
         }
         catch (Throwable t)
@@ -365,8 +383,8 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     // valid states to assign are SPINNING, STOP_SIGNALLED, (ASSIGNED);
     // restores invariants of the various states (e.g. spinningCount, descheduled collection and thread park status)
     @WithSpan
-    boolean assign(@SpanAttribute Work work,
-                   @SpanAttribute boolean self)
+    boolean assign(@SpanAttribute("work") Work work,
+                   @SpanAttribute("self") boolean self)
     {
         Work state = get();
         final long start = Clock.Global.nanoTime();
@@ -429,6 +447,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 //                    Clock.Global.nanoTime() - start
 //                );
                 LockSupport.unpark(thread);
+                this.parkSpan.end();
                 this.metrics.parkLatency.update(
                     Clock.Global.nanoTime() - parkStart,
                     TimeUnit.NANOSECONDS
@@ -638,8 +657,8 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     // is initialised to a negative offset from realtime; as we spin we add to this value, and if we ever exceed
     // realtime we have spun too much and deschedule; if we get too far behind realtime, we reset to our initial offset
     @WithSpan
-    private void maybeStop(@SpanAttribute long stopCheck,
-                           @SpanAttribute long now)
+    private void maybeStop(@SpanAttribute("stopCheck") long stopCheck,
+                           @SpanAttribute("now") long now)
     {
         final long start = Clock.Global.nanoTime();
 //        logger.info("[{}] Start maybeStop({},{}) {}", workerId, stopCheck, now, start);
