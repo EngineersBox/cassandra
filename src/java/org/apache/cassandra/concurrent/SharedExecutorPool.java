@@ -190,7 +190,11 @@ public class SharedExecutorPool
             Map.Entry<Long, SEPWorker> entry = spinning.pollFirstEntry();
             if (entry != null)
             {
-                entry.getValue().parkSpan.addLink(Span.current().getSpanContext()).end();
+                final Span parkSpan = entry.getValue().parkSpan;
+                if (parkSpan != null)
+                {
+                    parkSpan.addLink(Span.current().getSpanContext()).end();
+                }
                 LockSupport.unpark(entry.getValue().thread);
             }
         }
