@@ -21,6 +21,7 @@ import com.google.common.base.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.db.ColumnFamilyStore;
@@ -133,7 +134,8 @@ public abstract class AbstractReadExecutor
     }
 
     @WithSpan
-    private void makeRequests(ReadCommand readCommand, Iterable<Replica> replicas)
+    private void makeRequests(@SpanAttribute("readCommand") ReadCommand readCommand,
+                              @SpanAttribute("replicas") Iterable<Replica> replicas)
     {
         boolean hasLocalEndpoint = false;
         Message<ReadCommand> message = null;

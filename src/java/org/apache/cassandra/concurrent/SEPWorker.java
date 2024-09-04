@@ -30,7 +30,6 @@ import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
-import io.opentelemetry.context.Scope;
 import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.metrics.scheduler.SEPWorkerMetrics;
@@ -51,6 +50,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     final Thread thread;
     final SharedExecutorPool pool;
     final ThreadGroup threadGroup;
+    Span parkSpan;
     SEPWorkerMetrics metrics;
     private final Tracer tracer;
 
@@ -107,8 +107,8 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         return null;
     }
 
-    private Span parkSpan;
 
+    @WithSpan
     public void run()
     {
         /*
@@ -127,21 +127,16 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         ContextualTask task = null;
         final long start = Clock.Global.nanoTime();
         Span span;
-//        logger.info("[{}] Start run() {}", workerId, start);
         try
         {
             while (true)
             {
-                // TODO: Need to attach a parent span to the work unit itself
-                //       in order to bind this together with that trace to form
-                //       a complete execution path
-                span = this.tracer.spanBuilder("run-loop")
+                span = this.tracer.spanBuilder("SEPWorker::runLoop")
                                   .setParent(Context.current())
                                   .startSpan();
-//                final long _start = Clock.Global.nanoTime();
-//                logger.info("[{}] Start run() iteration {}", workerId, _start);
                 if (pool.shuttingDown)
                 {
+                    span.addEvent("Shutting down");
                     span.end();
                     this.metrics.runLatency.update(
                         Clock.Global.nanoTime() - start,
@@ -153,10 +148,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 
                 if (isSpinning() && !selfAssign())
                 {
-//                    logger.info("[{}] Is spinning + cannot self assign => doWaitSpin() {}", workerId, Clock.Global.nanoTime() - _start);
-
                     doWaitSpin();
-//                    logger.info("[{}] End doWaitSpin() {}", workerId, Clock.Global.nanoTime() - _start);
                     // if the pool is terminating, but we have been assigned STOP_SIGNALLED, if we do not re-check
                     // whether the pool is shutting down this thread will go to sleep and block forever
                     span.end();
@@ -168,57 +160,38 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 // we go to sleep)
                 if (stop())
                 {
-//                    logger.info(
-//                        "[{}] Stop signalled, park worker until not-stopped {}",
-//                        workerId,
-//                        Clock.Global.nanoTime() - _start
-//                    );
                     while (isStopped())
                     {
-                        parkStart = Clock.Global.nanoTime();
-                        parkSpan = this.tracer.spanBuilder("LockSupport.park")
+                        this.parkStart = Clock.Global.nanoTime();
+                        this.parkSpan = this.tracer.spanBuilder("LockSupport.park")
                                               .setParent(Context.current().with(span))
                                               .startSpan();
                         LockSupport.park();
                     }
-//                    logger.info("[{}] Finished top parking {}", workerId, Clock.Global.nanoTime() - _start);
                 }
 
                 // we can be assigned any state from STOPPED, so loop if we don't actually have any tasks assigned
                 assigned = get().assigned;
                 if (assigned == null)
                 {
-//                    logger.info("[{}] No tasks assigned {}", workerId, Clock.Global.nanoTime() - _start);
+                    span.addEvent("No SEPExecutor assigned");
                     span.end();
                     continue;
                 }
                 if (SET_THREAD_NAME)
                 {
-//                    logger.info(
-//                        "[{}] Renamed thread {} => {}-{}",
-//                        workerId,
-//                        Thread.currentThread().getName(),
-//                        assigned.name, workerId
-//                    );
                     Thread.currentThread().setName(assigned.stageName + '-' + workerId);
                 }
                 this.metrics.setExecutorOrdinal(assigned.name);
-//                logger.info(
-//                    "[{}] Pending tasks before {} {}",
-//                    workerId,
-//                    assigned.tasks.size(),
-//                    Clock.Global.nanoTime() - _start
-//                );
                 task = assigned.tasks.poll();
                 currentTask.lazySet(task);
 
                 // if we do have tasks assigned, nobody will change our state so we can simply set it to WORKING
                 // (which is also a state that will never be interrupted externally)
                 setWork(Work.WORKING);
-//                logger.info("[{}] Set to WORKING state {}", workerId, Clock.Global.nanoTime() - _start);
                 boolean shutdown;
                 SEPExecutor.TakeTaskPermitResult status = null; // make sure set if shutdown check short circuits
-                final Span innerSpan = this.tracer.spanBuilder("task_loop")
+                final Span innerSpan = this.tracer.spanBuilder("SEPWorker::innerTaskLoop")
                                             .setParent(Context.current().with(span))
                                             .startSpan();
                 while (true)
@@ -228,84 +201,58 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                     // ensures that even once all spinning threads have found work, if more work is left to be serviced
                     // and permits are available, it will be dealt with immediately.
 //                    logger.info("[{}] maybeSchedule() {}", workerId, Clock.Global.nanoTime() - _start);
+                    innerSpan.addEvent("Attempting to schedule threads to assigned SEPExecutor");
                     assigned.maybeSchedule();
 
                     // we know there is work waiting, as we have a work permit, so poll() will always succeed
-                    final Span taskSpan = this.tracer.spanBuilder("task.run")
-                                    .setParent(Context.current().with(innerSpan))
-                                    .startSpan();
+                    final Span taskSpan = this.tracer.spanBuilder("Runnable.run()")
+                                                     .setParent(Context.current().with(innerSpan))
+                                                     .startSpan();
+                    final Span ctxSpan = this.tracer.spanBuilder("ContextualTask.runnable.run()")
+                                                    .setParent(task.context)
+                                                    .addLink(taskSpan.getSpanContext())
+                                                    .startSpan();
                     final long startTask = Clock.Global.nanoTime();
-//                    logger.info("[{}] Start task.run() {}", workerId, startTask - _start);
-                    try (final Scope ignored = task.context.with(taskSpan).makeCurrent())
-                    {
-                        task.runnable.run();
-                    }
+                    task.runnable.run();
                     this.metrics.taskRunLatency.update(
-                        Clock.Global.nanoTime() - startTask,
-                        TimeUnit.NANOSECONDS
+                    Clock.Global.nanoTime() - startTask,
+                    TimeUnit.NANOSECONDS
                     );
+                    ctxSpan.end();
                     taskSpan.end();
-//                    final long endTask = Clock.Global.nanoTime();
-//                    logger.info("[{}] End task.run() {} Duration: {}", workerId, endTask - _start, endTask - startTask);
                     assigned.onCompletion();
                     task = null;
 
                     if (shutdown = assigned.shuttingDown)
                     {
-//                        logger.info("[{}] Shutting down {}", workerId, Clock.Global.nanoTime() - _start);
+                        innerSpan.addEvent("Assigned SEPExecutor Shutting Down");
                         break;
                     }
 
                     if (TOOK_PERMIT != (status = assigned.takeTaskPermit(true)))
                     {
-//                        logger.info("[{}] Did not take permit {}", workerId, Clock.Global.nanoTime() - _start);
+                        innerSpan.addEvent("Could not take task permit");
                         break;
                     }
 
-//                    logger.info(
-//                        "[{}] Pending tasks after WORKING iteration: {} {}",
-//                        workerId,
-//                        assigned.tasks.size(),
-//                        Clock.Global.nanoTime() - _start
-//                    );
                     task = assigned.tasks.poll();
                     currentTask.lazySet(task);
                 }
                 innerSpan.end();
                 // return our work permit, and maybe signal shutdown
-//                logger.info(
-//                    "[{}] Release task {}",
-//                    workerId,
-//                    Clock.Global.nanoTime() - _start
-//                );
                 currentTask.lazySet(null);
 
                 if (status != RETURNED_WORK_PERMIT)
                 {
-//                    logger.info("[{}] returnWorkPermit() {}", workerId, Clock.Global.nanoTime() - _start);
                     assigned.returnWorkPermit();
                 }
 
                 if (shutdown)
                 {
-//                    logger.info(
-//                        "[{}] Shutdown invoked, active tasks: {} {}",
-//                        workerId,
-//                        assigned.getActiveTaskCount(),
-//                        Clock.Global.nanoTime() - _start
-//                    );
                     if (assigned.getActiveTaskCount() == 0)
                     {
-//                        logger.info("[{}] Signalled shutdown all {}", workerId, Clock.Global.nanoTime() - _start);
                         assigned.shutdown.signalAll();
                     }
-//                    final long end = Clock.Global.nanoTime();
-//                    logger.info(
-//                        "[{}] End run() {} Duration: {}",
-//                        workerId,
-//                        end,
-//                        end - _start
-//                    );
                     this.metrics.runLatency.update(
                         Clock.Global.nanoTime() - start,
                         TimeUnit.NANOSECONDS
@@ -319,23 +266,8 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 // try to immediately reassign ourselves some work; if we fail, start spinning
                 if (!selfAssign())
                 {
-//                    logger.info(
-//                        "[{}] Cannot self assign, start SPINNING {}",
-//                        workerId,
-//                        Clock.Global.nanoTime() - _start
-//                    );
                     startSpinning();
                 }
-//                } else {
-//                    logger.info("[{}] Self assigned {}", workerId, Clock.Global.nanoTime() - _start);
-//                }
-//                final long end = Clock.Global.nanoTime();
-//                logger.info(
-//                    "[{}] End run() iteration {} Duration: {}",
-//                    workerId,
-//                    end,
-//                    end - _start
-//                );
                 span.end();
             }
         }
@@ -370,13 +302,9 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 Clock.Global.nanoTime() - start,
                 TimeUnit.NANOSECONDS
             );
-//            logger.info("[{}] Finally released task {}", workerId, Clock.Global.nanoTime() - start);
             currentTask.lazySet(null);
-//            logger.info("[{}] Marked workerEnded {}", workerId, Clock.Global.nanoTime() - start);
             pool.workerEnded(this);
         }
-//        final long end = Clock.Global.nanoTime();
-//        logger.info("[{}] End run() {} Duration: {}", workerId, end, end - start);
     }
 
     // try to assign this worker the provided work
@@ -388,13 +316,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     {
         Work state = get();
         final long start = Clock.Global.nanoTime();
-//        logger.info(
-//            "[{}] Start assign({}, {}) {}",
-//            workerId,
-//            work.label,
-//            self,
-//            start
-//        );
         // Note that this loop only performs multiple iterations when
         // CAS on aquiring work fails. Every other case terminates the
         // loop and the method call.
@@ -402,12 +323,10 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         {
             if (!compareAndSet(state, work))
             {
-//                logger.info("[{}] CAS work state failed {}", workerId, Clock.Global.nanoTime() - start);
                 state = get();
                 continue;
             }
             this.metrics.setWorkStateOrdinal(work);
-//            logger.info("[{}] CAS work state succeeded {}", workerId, Clock.Global.nanoTime() - start);
             // if we were spinning, exit the state (decrement the count); this is valid even if we are already spinning,
             // as the assigning thread will have incremented the spinningCount
             if (state.isSpinning())
@@ -416,19 +335,9 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
             // if we're being descheduled, place ourselves in the descheduled collection
             if (work.isStop())
             {
-//                logger.info("[{}] Stopped, descheduling {}", workerId, Clock.Global.nanoTime() - start);
                 pool.descheduled.put(workerId, this);
                 if (pool.shuttingDown)
                 {
-//                    final long end = Clock.Global.nanoTime();
-//                    logger.info(
-//                        "[{}] Pool shudown, end assign({},{}) {} Duration: {}",
-//                        workerId,
-//                        work.label,
-//                        self,
-//                        end,
-//                        end - start
-//                    );
                     this.metrics.assignLatency.update(
                         Clock.Global.nanoTime() - start,
                         TimeUnit.NANOSECONDS
@@ -441,11 +350,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
             // (which we can immediately convert to stopped), unpark the worker
             if (state.isStopped() && (!work.isStop() || !stop()))
             {
-//                logger.info(
-//                    "[{}] Stopped and next state is not stopped, unparking {}",
-//                    workerId,
-//                    Clock.Global.nanoTime() - start
-//                );
                 LockSupport.unpark(thread);
                 this.parkSpan.end();
                 this.metrics.parkLatency.update(
@@ -453,28 +357,12 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                     TimeUnit.NANOSECONDS
                 );
             }
-//            final long end = Clock.Global.nanoTime();
-//            logger.info(
-//                "[{}] End assign({},{}) success {} Duration: {}",
-//                workerId,
-//                work.label,
-//                self,
-//                end,
-//                end - start
-//            );
             this.metrics.assignLatency.update(
                 Clock.Global.nanoTime() - start,
                 TimeUnit.NANOSECONDS
             );
             return true;
         }
-//        final long end = Clock.Global.nanoTime();
-//        logger.info(
-//            "[{}] Assign end failure {} Duration: {}",
-//            workerId,
-//            end,
-//            end - start
-//        );
         this.metrics.assignLatency.update(
             Clock.Global.nanoTime() - start,
             TimeUnit.NANOSECONDS
@@ -487,17 +375,9 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     private boolean selfAssign()
     {
         final long start = Clock.Global.nanoTime();
-//        logger.info("[{}] Start selfAssign() {}", workerId, start);
         // if we aren't permitted to assign in this state, fail
         if (!get().canAssign(true))
         {
-//            final long end = Clock.Global.nanoTime();
-//            logger.info(
-//                "[{}] End selfAssign() cannot assign {} Duration: {}",
-//                workerId,
-//                end,
-//                end - start
-//            );
             this.metrics.selfAssignLatency.update(
                 Clock.Global.nanoTime() - start,
                 TimeUnit.NANOSECONDS
@@ -512,13 +392,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 // we successfully started work on this executor, so we must either assign it to ourselves or ...
                 if (assign(work, true))
                 {
-//                    final long end = Clock.Global.nanoTime();
-//                    logger.info(
-//                        "[{}] Self assign succeeded on current worker {} Duration: {}",
-//                        workerId,
-//                        end,
-//                        end - start
-//                    );
                     this.metrics.selfAssignLatency.update(
                         Clock.Global.nanoTime() - start,
                         TimeUnit.NANOSECONDS
@@ -526,15 +399,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                     return true;
                 }
                 // ... if we fail, schedule it to another worker
-//                logger.info("[{}] Scheduling work to another worker {}", workerId, Clock.Global.nanoTime() - start);
                 pool.schedule(work);
-//                final long end = Clock.Global.nanoTime();
-//                logger.info(
-//                    "[{}] End selfAssign() successful {} Duration: {}",
-//                    workerId,
-//                    end,
-//                    end - start
-//                );
                 // and return success as we must have already been assigned a task
                 assert get().assigned != null;
                 this.metrics.selfAssignLatency.update(
@@ -544,13 +409,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 return true;
             }
         }
-//        final long end = Clock.Global.nanoTime();
-//        logger.info(
-//            "[{}] End selfAssign() failure {} Duration: {}",
-//            workerId,
-//            end,
-//            end - start
-//        );
         this.metrics.selfAssignLatency.update(
             Clock.Global.nanoTime() - start,
             TimeUnit.NANOSECONDS
@@ -564,7 +422,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     @WithSpan
     private void startSpinning()
     {
-//        logger.info("[{}] startSpinning() {}", workerId, Clock.Global.nanoTime());
         assert get() == Work.WORKING;
         pool.spinningCount.incrementAndGet();
         setWork(Work.SPINNING);
@@ -575,36 +432,14 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     @WithSpan
     private void stopSpinning()
     {
-//        final long start = Clock.Global.nanoTime();
-//        logger.info("[{}] Start stopSpinning() {}", workerId, start);
         if (pool.spinningCount.decrementAndGet() == 0)
         {
-//            logger.info(
-//                "[{}] No more spinning, scheduling executor. Num: {} {}",
-//                workerId,
-//                pool.executors.size(),
-//                Clock.Global.nanoTime() - start
-//            );
             for (SEPExecutor executor : pool.executors)
             {
                 final boolean result = executor.maybeSchedule();
-//                logger.info(
-//                    "[{}] maybeSchedule() executor {} => {} {}",
-//                    workerId,
-//                    executor.name,
-//                    result,
-//                    Clock.Global.nanoTime() - start
-//                );
             }
         }
         prevStopCheck = soleSpinnerSpinTime = 0;
-//        final long end = Clock.Global.nanoTime();
-//        logger.info(
-//            "[{}] End stopSpinning() {} Duration: {}",
-//            workerId,
-//            end,
-//            end - start
-//        );
     }
 
     // perform a sleep-spin, incrementing pool.stopCheck accordingly
@@ -612,7 +447,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     private void doWaitSpin()
     {
         final long _start = Clock.Global.nanoTime();
-//        logger.info("[{}] Start doWaitSpin() {}", workerId, start);
         // pick a random sleep interval based on the number of threads spinning, so that
         // we should always have a thread about to wake up, but most threads are sleeping
         long sleep = 10000L * pool.spinningCount.get();
@@ -621,7 +455,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         sleep = Math.max(10000, sleep);
 
         // Minimise sleep operations to see if throughput improves
-//        long sleep = 1;
 
         long start = nanoTime();
 
@@ -636,7 +469,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         // finish timing and grab spinningTime (before we finish timing so it is under rather than overestimated)
         long end = nanoTime();
         long spin = end - start;
-//        logger.info("[{}] End worker doWaitSpin() {} Duration: {}", workerId, end, spin);
         long stopCheck = pool.stopCheck.addAndGet(spin);
         maybeStop(stopCheck, end);
         if (prevStopCheck + spin == stopCheck)
@@ -661,99 +493,54 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                            @SpanAttribute("now") long now)
     {
         final long start = Clock.Global.nanoTime();
-//        logger.info("[{}] Start maybeStop({},{}) {}", workerId, stopCheck, now, start);
         long delta = now - stopCheck;
         if (delta <= 0)
         {
-//            logger.info("[{}] Negative delta {}", workerId, Clock.Global.nanoTime() - start);
             // if stopCheck has caught up with present, we've been spinning too much, so if we can atomically
             // set it to the past again, we should stop a worker
             if (pool.stopCheck.compareAndSet(stopCheck, now - stopCheckInterval))
             {
-//                logger.info(
-//                    "[{}] CAS succeeded for stopCheck to {} {}",
-//                    workerId,
-//                    now - stopCheckInterval,
-//                    Clock.Global.nanoTime() - start
-//                );
                 // try and stop ourselves;
                 // if we've already been assigned work stop another worker
                 if (!assign(Work.STOP_SIGNALLED, true))
                 {
-//                    logger.info(
-//                        "[{}] Cannot assign STOP_SIGNALLED, scheduling {}",
-//                        workerId,
-//                        Clock.Global.nanoTime() - start
-//                    );
                     pool.schedule(Work.STOP_SIGNALLED);
                 }
-//                } else {
-//                    logger.info("[{}] Assigned STOP_SIGNALLED {}", workerId, Clock.Global.nanoTime() - start);
-//                }
             }
-//            } else {
-//                logger.info(
-//                    "[{}] CAS failed for stopCheck to {} {}",
-//                    workerId,
-//                    now - stopCheckInterval,
-//                    Clock.Global.nanoTime() - start
-//                );
-//            }
         }
         else if (soleSpinnerSpinTime > stopCheckInterval && pool.spinningCount.get() == 1)
         {
-//            logger.info(
-//                "[{}] Spin time greater than interval and spun only once, assigning STOP_SIGNALLED {}",
-//                workerId,
-//                Clock.Global.nanoTime() - start
-//            );
             // permit self-stopping
             assign(Work.STOP_SIGNALLED, true);
         }
         else
         {
-//            logger.info(
-//                "[{}] Start resetting stopCheck as too far in past {}",
-//                workerId,
-//                Clock.Global.nanoTime() - start
-//            );
             // if stop check has gotten too far behind present, update it so new spins can affect it
             while (delta > stopCheckInterval * 2 && !pool.stopCheck.compareAndSet(stopCheck, now - stopCheckInterval))
             {
                 stopCheck = pool.stopCheck.get();
                 delta = now - stopCheck;
             }
-//            logger.info(
-//                "[{}] Finished resetting stopCheck {}",
-//                workerId,
-//                Clock.Global.nanoTime() - start
-//            );
         }
-//        final long end = Clock.Global.nanoTime();
-//        logger.info(
-//            "[{}] End maybeStop({},{}) {} Duration: {}",
-//            workerId,
-//            stopCheck,
-//            now,
-//            end,
-//            end - start
-//        );
         this.metrics.stopLatency.update(
             Clock.Global.nanoTime() - start,
             TimeUnit.NANOSECONDS
         );
     }
 
+    @WithSpan
     private boolean isSpinning()
     {
         return get().isSpinning();
     }
 
+    @WithSpan
     private boolean stop()
     {
         return get().isStop() && compareAndSet(Work.STOP_SIGNALLED, Work.STOPPED);
     }
 
+    @WithSpan
     private boolean isStopped()
     {
         return get().isStopped();

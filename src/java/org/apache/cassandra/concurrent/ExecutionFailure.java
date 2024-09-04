@@ -21,6 +21,8 @@ package org.apache.cassandra.concurrent;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 
+import io.opentelemetry.context.Context;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.concurrent.DebuggableTask.RunnableDebuggableTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -123,9 +125,10 @@ public class ExecutionFailure
      */
     private static Runnable enforceOptions(WithResources withResources, Runnable wrap, boolean propagate)
     {
-        return new Runnable()
+        return Context.current().wrap(new Runnable()
         {
             @Override
+            @WithSpan
             public void run()
             {
                 try (@SuppressWarnings("unused") Closeable close = withResources.get())
@@ -145,7 +148,7 @@ public class ExecutionFailure
             {
                 return wrap.toString();
             }
-        };
+        });
     }
 
     /**
