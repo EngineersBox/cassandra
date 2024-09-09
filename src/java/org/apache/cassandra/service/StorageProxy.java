@@ -1896,6 +1896,7 @@ public class StorageProxy implements StorageProxyMBean
         return !StorageService.instance.isBootstrapMode();
     }
 
+    @WithSpan
     private static PartitionIterator readWithPaxos(SinglePartitionReadCommand.Group group, ConsistencyLevel consistencyLevel, Dispatcher.RequestTime requestTime)
     throws InvalidRequestException, UnavailableException, ReadFailureException, ReadTimeoutException
     {

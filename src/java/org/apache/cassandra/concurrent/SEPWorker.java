@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import io.netty.util.concurrent.FastThreadLocalThread;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.instrumentation.annotations.SpanAttribute;
@@ -215,8 +216,8 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                     final long startTask = Clock.Global.nanoTime();
                     task.runnable.run();
                     this.metrics.taskRunLatency.update(
-                    Clock.Global.nanoTime() - startTask,
-                    TimeUnit.NANOSECONDS
+                        Clock.Global.nanoTime() - startTask,
+                        TimeUnit.NANOSECONDS
                     );
                     ctxSpan.end();
                     taskSpan.end();
@@ -316,16 +317,24 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     {
         Work state = get();
         final long start = Clock.Global.nanoTime();
+        Span span;
         // Note that this loop only performs multiple iterations when
         // CAS on aquiring work fails. Every other case terminates the
         // loop and the method call.
         while (state.canAssign(self))
         {
+            span = this.tracer.spanBuilder("SEPWorker.state.compareAndSet")
+                   .setParent(Context.current())
+                   .startSpan();
             if (!compareAndSet(state, work))
             {
                 state = get();
+                span.setStatus(StatusCode.ERROR);
+                span.end();
                 continue;
             }
+            span.setStatus(StatusCode.OK);
+            span.end();
             this.metrics.setWorkStateOrdinal(work);
             // if we were spinning, exit the state (decrement the count); this is valid even if we are already spinning,
             // as the assigning thread will have incremented the spinningCount
@@ -351,9 +360,10 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
             if (state.isStopped() && (!work.isStop() || !stop()))
             {
                 LockSupport.unpark(thread);
+                final long parkEnd = Clock.Global.nanoTime();
                 this.parkSpan.end();
                 this.metrics.parkLatency.update(
-                    Clock.Global.nanoTime() - parkStart,
+                    parkEnd - parkStart,
                     TimeUnit.NANOSECONDS
                 );
             }
@@ -436,7 +446,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         {
             for (SEPExecutor executor : pool.executors)
             {
-                final boolean result = executor.maybeSchedule();
+                executor.maybeSchedule();
             }
         }
         prevStopCheck = soleSpinnerSpinTime = 0;
