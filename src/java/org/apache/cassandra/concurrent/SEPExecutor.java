@@ -131,51 +131,56 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     }
 
     @WithSpan
-    public <T extends Runnable> T addTask(@SpanAttribute("task") T task)
+    public <T extends Runnable> T addTask(final T task)
     {
-        // we add to the queue first, so that when a worker takes a task permit it can be certain there is a task available
-        // this permits us to schedule threads non-spuriously; it also means work is serviced fairly
-        final long start = Clock.Global.nanoTime();
-        tasks.add(new ContextualTask(task, Context.current()));
-        int taskPermits;
-        Span span;
-        while (true)
+        try
         {
-            span = this.tracer.spanBuilder("SEPExecutor.permits.compareAndSet")
-                   .setParent(Context.current())
-                   .startSpan();
-            long current = permits.get();
-            taskPermits = taskPermits(current);
-            // because there is no difference in practical terms between the work permit being added or not (the work is already in existence)
-            // we always add our permit, but block after the fact if we breached the queue limit
-            if (permits.compareAndSet(current, updateTaskPermits(current, taskPermits + 1)))
+            // we add to the queue first, so that when a worker takes a task permit it can be certain there is a task available
+            // this permits us to schedule threads non-spuriously; it also means work is serviced fairly
+            final long start = Clock.Global.nanoTime();
+            tasks.add(new ContextualTask(task, Context.current()));
+            int taskPermits;
+            Span span;
+            while (true)
             {
-                span.setStatus(StatusCode.OK);
+                span = this.tracer.spanBuilder("SEPExecutor.permits.compareAndSet")
+                                  .setParent(Context.current())
+                                  .startSpan();
+                long current = permits.get();
+                taskPermits = taskPermits(current);
+                // because there is no difference in practical terms between the work permit being added or not (the work is already in existence)
+                // we always add our permit, but block after the fact if we breached the queue limit
+                if (permits.compareAndSet(current, updateTaskPermits(current, taskPermits + 1)))
+                {
+                    span.setStatus(StatusCode.OK);
+                    span.end();
+                    break;
+                }
+                span.setStatus(StatusCode.ERROR);
                 span.end();
-                break;
             }
-            span.setStatus(StatusCode.ERROR);
-            span.end();
-        }
-        Span.current().addEvent(String.format(
+            Span.current().addEvent(String.format(
             "Task permits after CAS %d",
             taskPermits
-        ));
-        if (taskPermits == 0)
-        {
-            // we only need to schedule a thread if there are no tasks already waiting to be processed, as
-            // the original enqueue will have started a thread to service its work which will have itself
-            // spawned helper workers that would have either exhausted the available tasks or are still being spawned.
-            // to avoid incurring any unnecessary signalling penalties we also do not take any work to hand to the new
-            // worker, we simply start a worker in a spinning state
-//            logger.info("[{}] No permits, maybeStartSpinningWorker() {}", name, Clock.Global.nanoTime() - start);
-            pool.maybeStartSpinningWorker();
-        }
-        this.metrics.addTaskLatency.update(
+            ));
+            if (taskPermits == 0)
+            {
+                // we only need to schedule a thread if there are no tasks already waiting to be processed, as
+                // the original enqueue will have started a thread to service its work which will have itself
+                // spawned helper workers that would have either exhausted the available tasks or are still being spawned.
+                // to avoid incurring any unnecessary signalling penalties we also do not take any work to hand to the new
+                // worker, we simply start a worker in a spinning state
+                pool.maybeStartSpinningWorker();
+            }
+            this.metrics.addTaskLatency.update(
             Clock.Global.nanoTime() - start,
             TimeUnit.NANOSECONDS
-        );
-        return task;
+            );
+            return task;
+        } catch (final Exception e) {
+            logger.info("[SEPExecutor#addTask] === EXCEPTION CAUGHT ===", e);
+            throw e;
+        }
     }
 
     public enum TakeTaskPermitResult
