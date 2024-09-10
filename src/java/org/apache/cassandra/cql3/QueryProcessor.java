@@ -250,7 +250,7 @@ public class QueryProcessor implements QueryHandler
     public ResultMessage processStatement(@SpanAttribute("statement") CQLStatement statement,
                                           @SpanAttribute("queryState") QueryState queryState,
                                           @SpanAttribute("options") QueryOptions options,
-                                          @SpanAttribute("requestTime") Dispatcher.RequestTime requestTime)
+                                          Dispatcher.RequestTime requestTime)
     throws RequestExecutionException, RequestValidationException
     {
         logger.trace("Process {} @CL.{}", statement, options.getConsistency());

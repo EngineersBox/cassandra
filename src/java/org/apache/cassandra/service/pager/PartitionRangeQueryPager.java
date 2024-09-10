@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.service.pager;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.db.rows.Row;
@@ -73,6 +74,7 @@ public class PartitionRangeQueryPager extends AbstractQueryPager<PartitionRangeR
              : new PagingState(lastReturnedKey.getKey(), lastReturnedRow, maxRemaining(), remainingInPartition());
     }
 
+    @WithSpan
     @Override
     protected PartitionRangeReadQuery nextPageReadQuery(int pageSize)
     {

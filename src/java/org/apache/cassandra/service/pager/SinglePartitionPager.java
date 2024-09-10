@@ -19,6 +19,7 @@ package org.apache.cassandra.service.pager;
 
 import java.nio.ByteBuffer;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.filter.*;
@@ -82,6 +83,7 @@ public class SinglePartitionPager extends AbstractQueryPager<SinglePartitionRead
              : new PagingState(null, lastReturned, maxRemaining(), remainingInPartition());
     }
 
+    @WithSpan
     @Override
     protected SinglePartitionReadQuery nextPageReadQuery(int pageSize)
     {

@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.service.pager;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.transport.Dispatcher;
 import org.apache.cassandra.transport.ProtocolVersion;
 import org.apache.cassandra.utils.AbstractIterator;
@@ -148,6 +149,7 @@ public class MultiPartitionPager<T extends SinglePartitionReadQuery> implements 
         throw new AssertionError("Shouldn't be called on an exhausted pager");
     }
 
+    @WithSpan
     @SuppressWarnings("resource") // iter closed via countingIter
     @Override
     public PartitionIterator fetchPage(int pageSize, ConsistencyLevel consistency, ClientState clientState, Dispatcher.RequestTime requestTime) throws RequestValidationException, RequestExecutionException

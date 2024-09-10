@@ -33,6 +33,8 @@ import com.google.common.collect.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.audit.AuditLogContext;
 import org.apache.cassandra.audit.AuditLogEntryType;
@@ -279,7 +281,9 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
     }
 
     @WithSpan
-    public ResultMessage.Rows execute(QueryState state, QueryOptions options, Dispatcher.RequestTime requestTime)
+    public ResultMessage.Rows execute(@SpanAttribute("state") QueryState state,
+                                      @SpanAttribute("options") QueryOptions options,
+                                      Dispatcher.RequestTime requestTime)
     {
         ConsistencyLevel cl = options.getConsistency();
         checkNotNull(cl, "Invalid empty consistency level");
@@ -339,10 +343,12 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
 
         if (aggregationSpec == null && (pageSize <= 0 || (query.limits().count() <= pageSize) || query.isTopK()))
         {
+            Span.current().addEvent("Executing without pager");
             rows = execute(query, options, state.getClientState(), selectors, nowInSec, userLimit, null, requestTime, unmask);
         }
         else
         {
+            Span.current().addEvent("Executing with pager");
             QueryPager pager = getPager(query, options);
 
             rows = execute(state,
@@ -466,6 +472,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
             return pager.state();
         }
 
+        @WithSpan
         public abstract PartitionIterator fetchPage(int pageSize, Dispatcher.RequestTime requestTime);
 
         public static class NormalPager extends Pager
@@ -480,6 +487,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
                 this.clientState = clientState;
             }
 
+            @WithSpan
             public PartitionIterator fetchPage(int pageSize, Dispatcher.RequestTime requestTime)
             {
                 return pager.fetchPage(pageSize, consistency, clientState, requestTime);
@@ -496,6 +504,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
                 this.executionController = executionController;
             }
 
+            @WithSpan
             public PartitionIterator fetchPage(int pageSize, Dispatcher.RequestTime requestTime)
             {
                 return pager.fetchPageInternal(pageSize, executionController);
@@ -625,6 +634,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         }
     }
 
+    @WithSpan
     private QueryPager getPager(ReadQuery query, QueryOptions options)
     {
         QueryPager pager = query.getPager(options.getPagingState(), options.getProtocolVersion());
@@ -635,6 +645,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         return new AggregationQueryPager(pager, query.limits());
     }
 
+    @WithSpan
     public Map<DecoratedKey, List<Row>> executeRawInternal(QueryOptions options, ClientState state, long nowInSec) throws RequestExecutionException, RequestValidationException
     {
         int userLimit = getLimit(options);

@@ -446,6 +446,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
         return clusteringIndexFilter.isReversed();
     }
 
+    @WithSpan
     @Override
     public SinglePartitionReadCommand forPaging(Clustering<?> lastReturned, DataLimits limits)
     {
@@ -1280,6 +1281,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
                    new Group(commands, limits);
         }
 
+        @WithSpan
         public PartitionIterator execute(ConsistencyLevel consistency, ClientState state, Dispatcher.RequestTime requestTime) throws RequestExecutionException
         {
             return StorageProxy.read(this, consistency, requestTime);

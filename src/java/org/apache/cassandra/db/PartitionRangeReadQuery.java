@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.db;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.db.filter.RowFilter;
@@ -59,6 +60,7 @@ public interface PartitionRangeReadQuery extends ReadQuery
      */
     PartitionRangeReadQuery withUpdatedLimitsAndDataRange(DataLimits newLimits, DataRange newDataRange);
 
+    @WithSpan
     default QueryPager getPager(PagingState pagingState, ProtocolVersion protocolVersion)
     {
         return new PartitionRangeQueryPager(this, pagingState, protocolVersion);

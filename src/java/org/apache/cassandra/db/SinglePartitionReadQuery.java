@@ -26,6 +26,7 @@ import com.google.common.collect.Iterables;
 
 import org.apache.commons.lang3.tuple.Pair;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.filter.ClusteringIndexFilter;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.filter.DataLimits;
@@ -125,8 +126,10 @@ public interface SinglePartitionReadQuery extends ReadQuery
      *
      * @return the newly create query.
      */
+    @WithSpan
     SinglePartitionReadQuery forPaging(Clustering<?> lastReturned, DataLimits limits);
 
+    @WithSpan
     @Override
     default SinglePartitionPager getPager(PagingState pagingState, ProtocolVersion protocolVersion)
     {
@@ -243,6 +246,7 @@ public interface SinglePartitionReadQuery extends ReadQuery
             return UnfilteredPartitionIterators.concat(partitions.stream().map(p -> p.getRight()).collect(Collectors.toList()));
         }
 
+        @WithSpan
         public QueryPager getPager(PagingState pagingState, ProtocolVersion protocolVersion)
         {
             if (queries.size() == 1)

@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.db;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.filter.DataLimits;
 import org.apache.cassandra.db.filter.RowFilter;
@@ -145,6 +146,7 @@ public interface ReadQuery
      * @param state request enqueue / and start times
      * @return the result of the query.
      */
+    @WithSpan
     public PartitionIterator execute(ConsistencyLevel consistency, ClientState state, Dispatcher.RequestTime requestTime) throws RequestExecutionException;
 
     /**
@@ -173,6 +175,7 @@ public interface ReadQuery
      *
      * @return a pager for the query.
      */
+    @WithSpan
     public QueryPager getPager(PagingState pagingState, ProtocolVersion protocolVersion);
 
     /**

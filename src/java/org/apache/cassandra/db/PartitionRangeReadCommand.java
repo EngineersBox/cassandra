@@ -317,6 +317,7 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
         metric.rangeLatency.addNano(latencyNanos);
     }
 
+    @WithSpan
     @VisibleForTesting
     public UnfilteredPartitionIterator queryStorage(final ColumnFamilyStore cfs, ReadExecutionController controller)
     {

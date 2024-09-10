@@ -20,6 +20,7 @@ package org.apache.cassandra.service.pager;
 import java.nio.ByteBuffer;
 import java.util.NoSuchElementException;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.schema.TableMetadata;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.aggregation.GroupingState;
@@ -50,6 +51,7 @@ public final class AggregationQueryPager implements QueryPager
         this.limits = limits;
     }
 
+    @WithSpan
     @Override
     public PartitionIterator fetchPage(int pageSize,
                                        ConsistencyLevel consistency,
@@ -68,6 +70,7 @@ public final class AggregationQueryPager implements QueryPager
         return subPager.executionController();
     }
 
+    @WithSpan
     @Override
     public PartitionIterator fetchPageInternal(int pageSize, ReadExecutionController executionController)
     {

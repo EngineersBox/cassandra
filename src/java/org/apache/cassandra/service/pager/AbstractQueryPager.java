@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.service.pager;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.db.partitions.*;
@@ -60,6 +61,7 @@ abstract class AbstractQueryPager<T extends ReadQuery> implements QueryPager
         return query.executionController();
     }
 
+    @WithSpan
     public PartitionIterator fetchPage(int pageSize, ConsistencyLevel consistency, ClientState clientState, Dispatcher.RequestTime requestTime)
     {
         if (isExhausted())
@@ -247,6 +249,7 @@ abstract class AbstractQueryPager<T extends ReadQuery> implements QueryPager
         return remainingInPartition;
     }
 
+    @WithSpan
     protected abstract T nextPageReadQuery(int pageSize);
     protected abstract void recordLast(DecoratedKey key, Row row);
     protected abstract boolean isPreviouslyReturnedPartition(DecoratedKey key);
