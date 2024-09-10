@@ -23,6 +23,8 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.filter.ClusteringIndexFilter;
@@ -66,7 +68,9 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
 
     protected final DataRange dataRange;
     protected final Slices requestedSlices;
+    private final Context spanContext;
 
+    @WithSpan
     private PartitionRangeReadCommand(boolean isDigest,
                                       int digestVersion,
                                       boolean acceptsTransient,
@@ -82,9 +86,11 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
         super(Kind.PARTITION_RANGE, isDigest, digestVersion, acceptsTransient, metadata, nowInSec, columnFilter, rowFilter, limits, indexQueryPlan, trackWarnings);
         this.dataRange = dataRange;
         this.requestedSlices = dataRange.clusteringIndexFilter.getSlices(metadata());
+        this.spanContext = Context.current();
 
     }
 
+    @WithSpan
     private static PartitionRangeReadCommand create(boolean isDigest,
                                                     int digestVersion,
                                                     boolean acceptsTransient,
@@ -309,6 +315,7 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
     @WithSpan
     public PartitionIterator execute(ConsistencyLevel consistency, ClientState state, Dispatcher.RequestTime requestTime) throws RequestExecutionException
     {
+        Span.current().storeInContext(this.spanContext);
         return StorageProxy.getRangeSlice(this, consistency, requestTime);
     }
 
@@ -321,6 +328,7 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
     @VisibleForTesting
     public UnfilteredPartitionIterator queryStorage(final ColumnFamilyStore cfs, ReadExecutionController controller)
     {
+        Span.current().storeInContext(this.spanContext);
         ColumnFamilyStore.ViewFragment view = cfs.select(View.selectLive(dataRange().keyRange()));
         Tracing.trace("Executing seq scan across {} sstables for {}", view.sstables.size(), dataRange().keyRange().getString(metadata().partitionKeyType));
 
