@@ -29,6 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.helpers.MessageFormatter;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.audit.AuditLogContext;
 import org.apache.cassandra.audit.AuditLogEntryType;
 import org.apache.cassandra.db.guardrails.Guardrails;
@@ -396,12 +397,13 @@ public class BatchStatement implements CQLStatement
         }
     }
 
-
+    @WithSpan
     public ResultMessage execute(QueryState queryState, QueryOptions options, Dispatcher.RequestTime requestTime)
     {
         return execute(queryState, BatchQueryOptions.withoutPerStatementVariables(options), requestTime);
     }
 
+    @WithSpan
     public ResultMessage execute(QueryState queryState, BatchQueryOptions options, Dispatcher.RequestTime requestTime)
     {
         long timestamp = options.getTimestamp(queryState);
@@ -431,6 +433,7 @@ public class BatchStatement implements CQLStatement
         return new ResultMessage.Void();
     }
 
+    @WithSpan
     private void executeWithoutConditions(List<? extends IMutation> mutations, ConsistencyLevel cl, Dispatcher.RequestTime requestTime) throws RequestExecutionException, RequestValidationException
     {
         if (mutations.isEmpty())
@@ -457,6 +460,7 @@ public class BatchStatement implements CQLStatement
         }
     }
 
+    @WithSpan
     private ResultMessage executeWithConditions(BatchQueryOptions options, QueryState state, Dispatcher.RequestTime requestTime)
     {
         Pair<CQL3CasRequest, Set<ColumnMetadata>> p = makeCasRequest(options, state);
@@ -556,6 +560,7 @@ public class BatchStatement implements CQLStatement
         return hasConditions;
     }
 
+    @WithSpan
     public ResultMessage executeLocally(QueryState queryState, QueryOptions options) throws RequestValidationException, RequestExecutionException
     {
         BatchQueryOptions batchOptions = BatchQueryOptions.withoutPerStatementVariables(options);
@@ -567,6 +572,7 @@ public class BatchStatement implements CQLStatement
         return new ResultMessage.Void();
     }
 
+    @WithSpan
     private ResultMessage executeInternalWithoutCondition(QueryState queryState, BatchQueryOptions batchOptions, Dispatcher.RequestTime requestTime)
     {
         long timestamp = batchOptions.getTimestamp(queryState);
@@ -577,6 +583,7 @@ public class BatchStatement implements CQLStatement
         return null;
     }
 
+    @WithSpan
     private ResultMessage executeInternalWithConditions(BatchQueryOptions options, QueryState state)
     {
         Pair<CQL3CasRequest, Set<ColumnMetadata>> p = makeCasRequest(options, state);

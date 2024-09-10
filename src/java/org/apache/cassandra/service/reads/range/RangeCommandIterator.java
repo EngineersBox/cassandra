@@ -27,6 +27,8 @@ import com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.Keyspace;
@@ -98,6 +100,7 @@ public class RangeCommandIterator extends AbstractIterator<RowIterator> implemen
         enforceStrictLiveness = command.metadata().enforceStrictLiveness();
     }
 
+    @WithSpan
     @Override
     protected RowIterator computeNext()
     {
@@ -148,11 +151,15 @@ public class RangeCommandIterator extends AbstractIterator<RowIterator> implemen
         }
     }
 
+    @WithSpan
     private void updateConcurrencyFactor()
     {
+        final Span span = Span.current();
         liveReturned += counter.counted();
-
+        span.setAttribute("Counted", counter.counted());
+        span.setAttribute("Live returned", liveReturned);
         concurrencyFactor = computeConcurrencyFactor(totalRangeCount, rangesQueried, maxConcurrencyFactor, command.limits().count(), liveReturned);
+        span.setAttribute("Concurrency factor", concurrencyFactor);
     }
 
     @VisibleForTesting
@@ -185,6 +192,7 @@ public class RangeCommandIterator extends AbstractIterator<RowIterator> implemen
      * {@code DataLimits}) may have "state" information and that state may only be valid for the first query (in
      * that it's the query that "continues" whatever we're previously queried).
      */
+    @WithSpan
     private SingleRangeResponse query(ReplicaPlan.ForRangeRead replicaPlan, boolean isFirst)
     {
         PartitionRangeReadCommand rangeCommand = command.forSubRange(replicaPlan.range(), isFirst);
@@ -220,6 +228,7 @@ public class RangeCommandIterator extends AbstractIterator<RowIterator> implemen
         return new SingleRangeResponse(resolver, handler, readRepair);
     }
 
+    @WithSpan
     PartitionIterator sendNextRequests()
     {
         List<PartitionIterator> concurrentQueries = new ArrayList<>(concurrencyFactor);

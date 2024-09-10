@@ -572,11 +572,13 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         return new ResultMessage.Rows(rset);
     }
 
+    @WithSpan
     public ResultMessage.Rows executeLocally(QueryState state, QueryOptions options) throws RequestExecutionException, RequestValidationException
     {
         return executeInternal(state, options, options.getNowInSeconds(state), Dispatcher.RequestTime.forImmediateExecution());
     }
 
+    @WithSpan
     public ResultMessage.Rows executeInternal(QueryState state,
                                               QueryOptions options,
                                               long nowInSec,

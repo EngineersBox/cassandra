@@ -20,6 +20,8 @@ package org.apache.cassandra.transport.messages;
 import com.google.common.collect.ImmutableMap;
 
 import io.netty.buffer.ByteBuf;
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cql3.CQLStatement;
 import org.apache.cassandra.cql3.QueryEvents;
 import org.apache.cassandra.cql3.QueryHandler;
@@ -98,8 +100,11 @@ public class QueryMessage extends Message.Request
         return true;
     }
 
+    @WithSpan
     @Override
-    protected Message.Response execute(QueryState state, Dispatcher.RequestTime requestTime, boolean traceRequest)
+    protected Message.Response execute(@SpanAttribute("state") QueryState state,
+                                       @SpanAttribute("requestTime") Dispatcher.RequestTime requestTime,
+                                       @SpanAttribute("traceRequest") boolean traceRequest)
     {
         CQLStatement statement = null;
         try

@@ -22,6 +22,7 @@ import com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.config.CassandraRelevantProperties;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamilyStore;
@@ -53,6 +54,7 @@ public class RangeCommands
      */
     private static final int MAX_CONCURRENT_RANGE_REQUESTS = Math.max(1, CassandraRelevantProperties.MAX_CONCURRENT_RANGE_REQUESTS.getInt(FBUtilities.getAvailableProcessors() * 10));
 
+    @WithSpan
     public static PartitionIterator partitions(PartitionRangeReadCommand command,
                                                ConsistencyLevel consistencyLevel,
                                                Dispatcher.RequestTime requestTime)
@@ -65,6 +67,7 @@ public class RangeCommands
                                        command.metadata().enforceStrictLiveness());
     }
 
+    @WithSpan
     @VisibleForTesting
     static RangeCommandIterator rangeCommandIterator(PartitionRangeReadCommand command,
                                                      ConsistencyLevel consistencyLevel,

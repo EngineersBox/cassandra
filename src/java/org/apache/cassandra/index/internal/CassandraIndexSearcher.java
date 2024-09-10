@@ -26,6 +26,7 @@ import java.util.NavigableSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.schema.TableMetadata;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.*;
@@ -60,6 +61,7 @@ public abstract class CassandraIndexSearcher implements Index.Searcher
         return command;
     }
 
+    @WithSpan
     // of this method.
     public UnfilteredPartitionIterator search(ReadExecutionController executionController)
     {
@@ -77,6 +79,7 @@ public abstract class CassandraIndexSearcher implements Index.Searcher
         }
     }
 
+    @WithSpan
     private UnfilteredRowIterator queryIndex(DecoratedKey indexKey, ReadCommand command, ReadExecutionController executionController)
     {
         ClusteringIndexFilter filter = makeIndexFilter(command);

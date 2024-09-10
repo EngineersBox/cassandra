@@ -34,6 +34,8 @@ import com.google.common.primitives.Ints;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.antlr.runtime.*;
 import org.apache.cassandra.concurrent.ImmediateExecutor;
 import org.apache.cassandra.concurrent.ScheduledExecutors;
@@ -244,7 +246,11 @@ public class QueryProcessor implements QueryHandler
         }
     }
 
-    public ResultMessage processStatement(CQLStatement statement, QueryState queryState, QueryOptions options, Dispatcher.RequestTime requestTime)
+    @WithSpan
+    public ResultMessage processStatement(@SpanAttribute("statement") CQLStatement statement,
+                                          @SpanAttribute("queryState") QueryState queryState,
+                                          @SpanAttribute("options") QueryOptions options,
+                                          @SpanAttribute("requestTime") Dispatcher.RequestTime requestTime)
     throws RequestExecutionException, RequestValidationException
     {
         logger.trace("Process {} @CL.{}", statement, options.getConsistency());
@@ -259,6 +265,7 @@ public class QueryProcessor implements QueryHandler
         return result == null ? new ResultMessage.Void() : result;
     }
 
+    @WithSpan
     private ResultMessage processNodeLocalStatement(CQLStatement statement, QueryState queryState, QueryOptions options)
     {
         if (!ENABLE_NODELOCAL_QUERIES.getBoolean())
@@ -272,6 +279,7 @@ public class QueryProcessor implements QueryHandler
             throw new InvalidRequestException("NODE_LOCAL consistency level can only be used with BATCH, UPDATE, INSERT, DELETE, and SELECT statements");
     }
 
+    @WithSpan
     private ResultMessage processNodeLocalWrite(CQLStatement statement, QueryState queryState, QueryOptions options)
     {
         ClientRequestMetrics  levelMetrics = ClientRequestsMetricsHolder.writeMetricsForLevel(ConsistencyLevel.NODE_LOCAL);
@@ -290,6 +298,7 @@ public class QueryProcessor implements QueryHandler
         }
     }
 
+    @WithSpan
     private ResultMessage processNodeLocalSelect(SelectStatement statement, QueryState queryState, QueryOptions options)
     {
         ClientRequestMetrics  levelMetrics = ClientRequestsMetricsHolder.readMetricsForLevel(ConsistencyLevel.NODE_LOCAL);
@@ -315,6 +324,7 @@ public class QueryProcessor implements QueryHandler
         }
     }
 
+    @WithSpan
     public static ResultMessage process(String queryString, ConsistencyLevel cl, QueryState queryState, Dispatcher.RequestTime requestTime)
     throws RequestExecutionException, RequestValidationException
     {
@@ -328,6 +338,7 @@ public class QueryProcessor implements QueryHandler
         return getStatement(queryString, queryState.getClientState().cloneWithKeyspaceIfSet(options.getKeyspace()));
     }
 
+    @WithSpan
     public ResultMessage process(CQLStatement statement,
                                  QueryState state,
                                  QueryOptions options,
@@ -337,6 +348,7 @@ public class QueryProcessor implements QueryHandler
         return process(statement, state, options, requestTime);
     }
 
+    @WithSpan
     public ResultMessage process(CQLStatement prepared, QueryState queryState, QueryOptions options, Dispatcher.RequestTime requestTime)
     throws RequestExecutionException, RequestValidationException
     {
@@ -792,6 +804,7 @@ public class QueryProcessor implements QueryHandler
         return new ResultMessage.Prepared(statementId, resultMetadata.getResultMetadataId(), preparedMetadata, resultMetadata);
     }
 
+    @WithSpan
     @Override
     public ResultMessage processPrepared(CQLStatement statement,
                                          QueryState state,
@@ -803,6 +816,7 @@ public class QueryProcessor implements QueryHandler
         return processPrepared(statement, state, options, requestTime);
     }
 
+    @WithSpan
     public ResultMessage processPrepared(CQLStatement statement, QueryState queryState, QueryOptions options, Dispatcher.RequestTime requestTime)
     throws RequestExecutionException, RequestValidationException
     {
@@ -825,6 +839,7 @@ public class QueryProcessor implements QueryHandler
         return processStatement(statement, queryState, options, requestTime);
     }
 
+    @WithSpan
     public ResultMessage processBatch(BatchStatement statement,
                                       QueryState state,
                                       BatchQueryOptions options,
@@ -835,6 +850,7 @@ public class QueryProcessor implements QueryHandler
         return processBatch(statement, state, options, requestTime);
     }
 
+    @WithSpan
     public ResultMessage processBatch(BatchStatement batch, QueryState queryState, BatchQueryOptions options, Dispatcher.RequestTime requestTime)
     throws RequestExecutionException, RequestValidationException
     {

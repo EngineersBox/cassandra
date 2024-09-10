@@ -24,6 +24,7 @@ import java.util.List;
 import com.google.common.collect.ImmutableMap;
 
 import io.netty.buffer.ByteBuf;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cql3.Attributes;
 import org.apache.cassandra.cql3.BatchQueryOptions;
 import org.apache.cassandra.cql3.CQLStatement;
@@ -169,6 +170,7 @@ public class BatchMessage extends Message.Request
         return true;
     }
 
+    @WithSpan
     @Override
     protected Message.Response execute(QueryState state, Dispatcher.RequestTime requestTime, boolean traceRequest)
     {

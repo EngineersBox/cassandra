@@ -557,6 +557,7 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
             return executeInternal(executionController());
         }
 
+        @WithSpan
         @Override
         public UnfilteredPartitionIterator executeLocally(ReadExecutionController executionController)
         {

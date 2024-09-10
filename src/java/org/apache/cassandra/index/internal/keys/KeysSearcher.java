@@ -22,6 +22,9 @@ import java.nio.ByteBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.filter.DataLimits;
@@ -43,13 +46,14 @@ public class KeysSearcher extends CassandraIndexSearcher
         super(command, expression, indexer);
     }
 
+    @WithSpan
     protected UnfilteredPartitionIterator queryDataFromIndex(final DecoratedKey indexKey,
                                                              final RowIterator indexHits,
                                                              final ReadCommand command,
                                                              final ReadExecutionController executionController)
     {
         assert indexHits.staticRow() == Rows.EMPTY_STATIC_ROW;
-
+        final Context otelContext = Context.current();
         return new UnfilteredPartitionIterator()
         {
             private UnfilteredRowIterator next;
@@ -74,8 +78,10 @@ public class KeysSearcher extends CassandraIndexSearcher
                 return toReturn;
             }
 
+            @WithSpan
             private boolean prepareNext()
             {
+                Span.current().storeInContext(otelContext);
                 while (next == null && indexHits.hasNext())
                 {
                     Row hit = indexHits.next();

@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.collect.ImmutableMap;
 
 import io.netty.buffer.ByteBuf;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cql3.CQLStatement;
 import org.apache.cassandra.cql3.ColumnSpecification;
 import org.apache.cassandra.cql3.QueryEvents;
@@ -125,6 +126,7 @@ public class ExecuteMessage extends Message.Request
         return true;
     }
 
+    @WithSpan
     @Override
     protected Message.Response execute(QueryState state, Dispatcher.RequestTime requestTime, boolean traceRequest)
     {

@@ -25,6 +25,7 @@ import com.google.common.collect.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.auth.Permission;
 import org.apache.cassandra.db.guardrails.Guardrails;
@@ -490,7 +491,9 @@ public abstract class ModificationStatement implements CQLStatement.SingleKeyspa
     }
 
     @WithSpan
-    public ResultMessage execute(QueryState queryState, QueryOptions options, Dispatcher.RequestTime requestTime)
+    public ResultMessage execute(@SpanAttribute("queryState") QueryState queryState,
+                                 @SpanAttribute("options") QueryOptions options,
+                                 @SpanAttribute("requestTime") Dispatcher.RequestTime requestTime)
     throws RequestExecutionException, RequestValidationException
     {
         if (options.getConsistency() == null)

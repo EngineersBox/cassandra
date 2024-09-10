@@ -20,6 +20,7 @@ package org.apache.cassandra.cql3;
 import java.nio.ByteBuffer;
 import java.util.Map;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cql3.statements.BatchStatement;
 import org.apache.cassandra.exceptions.RequestExecutionException;
 import org.apache.cassandra.exceptions.RequestValidationException;
@@ -33,6 +34,7 @@ public interface QueryHandler
 {
     CQLStatement parse(String queryString, QueryState queryState, QueryOptions options);
 
+    @WithSpan
     ResultMessage process(CQLStatement statement,
                           QueryState state,
                           QueryOptions options,
@@ -45,12 +47,14 @@ public interface QueryHandler
 
     QueryHandler.Prepared getPrepared(MD5Digest id);
 
+    @WithSpan
     ResultMessage processPrepared(CQLStatement statement,
                                   QueryState state,
                                   QueryOptions options,
                                   Map<String, ByteBuffer> customPayload,
                                   Dispatcher.RequestTime requestTime) throws RequestExecutionException, RequestValidationException;
 
+    @WithSpan
     ResultMessage processBatch(BatchStatement statement,
                                QueryState state,
                                BatchQueryOptions options,

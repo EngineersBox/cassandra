@@ -32,6 +32,7 @@ import io.netty.channel.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.messages.*;
@@ -231,8 +232,10 @@ public abstract class Message
             return false;
         }
 
+        @WithSpan
         protected abstract Response execute(QueryState queryState, Dispatcher.RequestTime requestTime, boolean traceRequest);
 
+        @WithSpan
         public final Response execute(QueryState queryState, Dispatcher.RequestTime requestTime)
         {
             boolean shouldTrace = false;
