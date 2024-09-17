@@ -96,7 +96,6 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
 
     protected final DecoratedKey partitionKey;
     protected final ClusteringIndexFilter clusteringIndexFilter;
-    private final Context spanContext;
     private final Tracer tracer;
 
     @VisibleForTesting
@@ -117,7 +116,6 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
         assert partitionKey.getPartitioner() == metadata.partitioner;
         this.partitionKey = partitionKey;
         this.clusteringIndexFilter = clusteringIndexFilter;
-        this.spanContext = Context.current();
         this.tracer = GlobalOpenTelemetry.getTracerProvider().get("SinglePartitionReadCommand");
     }
 
@@ -674,7 +672,6 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
     private UnfilteredRowIterator queryMemtableAndDiskInternal(ColumnFamilyStore cfs, ReadExecutionController controller)
     {
         final Span currentSpan = Span.current();
-        currentSpan.storeInContext(this.spanContext);
         /*
          * We have 2 main strategies:
          *   1) We query memtables and sstables simulateneously. This is our most generic strategy and the one we use
@@ -701,10 +698,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
         }
 
         Tracing.trace("Acquiring sstable references");
-        ColumnFamilyStore.ViewFragment view = cfs.select(Wrapping.function(
-            this.spanContext,
-            View.select(SSTableSet.LIVE, partitionKey())
-        ));
+        ColumnFamilyStore.ViewFragment view = cfs.select(Wrapping.function(View.select(SSTableSet.LIVE, partitionKey())));
         view.sstables.sort(SSTableReader.maxTimestampDescending);
         ClusteringIndexFilter filter = clusteringIndexFilter();
         long minTimestamp = Long.MAX_VALUE;
@@ -856,12 +850,14 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
         }
     }
 
+    @WithSpan
     @Override
     protected boolean intersects(SSTableReader sstable)
     {
         return clusteringIndexFilter().intersects(sstable.metadata().comparator, sstable.getSSTableMetadata().coveredClustering);
     }
 
+    @WithSpan
     private UnfilteredRowIteratorWithLowerBound makeRowIteratorWithLowerBound(ColumnFamilyStore cfs,
                                                                               SSTableReader sstable,
                                                                               SSTableReadsListener listener)
@@ -875,6 +871,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
 
     }
 
+    @WithSpan
     private UnfilteredRowIterator makeRowIterator(ColumnFamilyStore cfs,
                                                   SSTableReader sstable,
                                                   ClusteringIndexNamesFilter clusteringIndexFilter,
@@ -889,6 +886,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
                                                     listener);
     }
 
+    @WithSpan
     private UnfilteredRowIterator makeRowIteratorWithSkippedNonStaticContent(ColumnFamilyStore cfs,
                                                                              SSTableReader sstable,
                                                                              SSTableReadsListener listener)
@@ -907,6 +905,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
      * Note that we cannot use the Transformations framework because they greedily get the static row, which
      * would cause all iterators to be initialized and hence all sstables to be accessed.
      */
+    @WithSpan
     private UnfilteredRowIterator withSSTablesIterated(List<UnfilteredRowIterator> iterators,
                                                        TableMetrics metrics,
                                                        SSTableReadMetricsCollector metricsCollector)
@@ -922,6 +921,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
 
         class UpdateSstablesIterated extends Transformation<UnfilteredRowIterator>
         {
+            @WithSpan
            public void onPartitionClose()
            {
                int mergedSSTablesIterated = metricsCollector.getMergedSSTables();

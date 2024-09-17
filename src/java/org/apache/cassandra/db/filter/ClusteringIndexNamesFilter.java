@@ -20,6 +20,7 @@ package org.apache.cassandra.db.filter;
 import java.io.IOException;
 import java.util.*;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.partitions.*;
@@ -140,6 +141,7 @@ public class ClusteringIndexNamesFilter extends AbstractClusteringIndexFilter
         return partition.unfilteredIterator(columnFilter, clusteringsInQueryOrder, isReversed());
     }
 
+    @WithSpan
     public boolean intersects(ClusteringComparator comparator, Slice slice)
     {
         for (Clustering<?> clustering : clusterings)

@@ -22,6 +22,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.Columns;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.DeletionTime;
@@ -400,6 +401,7 @@ public abstract class UnfilteredRowIterators
         private final IMergeIterator<Unfiltered, Unfiltered> mergeIterator;
         private final MergeListener listener;
 
+        @WithSpan
         private UnfilteredRowMergeIterator(TableMetadata metadata,
                                            List<UnfilteredRowIterator> iterators,
                                            RegularAndStaticColumns columns,
@@ -421,6 +423,7 @@ public abstract class UnfilteredRowIterators
             this.listener = listener;
         }
 
+        @WithSpan
         private static UnfilteredRowMergeIterator create(List<UnfilteredRowIterator> iterators, MergeListener listener)
         {
             try
@@ -481,6 +484,7 @@ public abstract class UnfilteredRowIterators
             return delTime;
         }
 
+        @WithSpan
         private static Row mergeStaticRows(List<UnfilteredRowIterator> iterators,
                                            Columns columns,
                                            MergeListener listener,
@@ -504,6 +508,7 @@ public abstract class UnfilteredRowIterators
             return merged;
         }
 
+        @WithSpan
         private static RegularAndStaticColumns collectColumns(List<UnfilteredRowIterator> iterators)
         {
             RegularAndStaticColumns first = iterators.get(0).columns();
@@ -520,6 +525,7 @@ public abstract class UnfilteredRowIterators
                  : new RegularAndStaticColumns(statics, regulars);
         }
 
+        @WithSpan
         protected Unfiltered computeNext()
         {
             while (mergeIterator.hasNext())
@@ -563,6 +569,7 @@ public abstract class UnfilteredRowIterators
                 return listener == null;
             }
 
+            @WithSpan
             public void reduce(int idx, Unfiltered current)
             {
                 nextKind = current.kind();
@@ -572,6 +579,7 @@ public abstract class UnfilteredRowIterators
                     markerMerger.add(idx, (RangeTombstoneMarker)current);
             }
 
+            @WithSpan
             protected Unfiltered getReduced()
             {
                 if (nextKind == Unfiltered.Kind.ROW)
@@ -590,6 +598,7 @@ public abstract class UnfilteredRowIterators
                 }
             }
 
+            @WithSpan
             protected void onKeyChange()
             {
                 if (nextKind == Unfiltered.Kind.ROW)

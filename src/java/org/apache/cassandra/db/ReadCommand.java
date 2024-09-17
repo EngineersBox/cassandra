@@ -959,7 +959,7 @@ public abstract class ReadCommand extends AbstractReadQuery
             else
                 unrepairedIters.add(iter);
         }
-
+        @WithSpan
         List<T> finalizeIterators(ColumnFamilyStore cfs, long nowInSec, long oldestUnrepairedTombstone)
         {
             if (repairedIters.isEmpty())

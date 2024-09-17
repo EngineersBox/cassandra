@@ -30,10 +30,9 @@ public class Wrapping
         throw new UnsupportedOperationException("Utility class");
     }
 
-    public static <T, U> Function<T, U> function(final Context context,
-                                                 final Function<T, U> function) {
+    public static <T, U> Function<T, U> function(final Function<T, U> function) {
         return (t) -> {
-            final Scope ignored = context.makeCurrent();
+            final Scope ignored = Context.current().makeCurrent();
             U var4;
             try {
                 var4 = function.apply(t);

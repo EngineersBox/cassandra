@@ -27,6 +27,7 @@ import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.filter.ClusteringIndexFilter;
@@ -71,7 +72,6 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
 
     protected final DataRange dataRange;
     protected final Slices requestedSlices;
-    private final Context spanContext;
     private final Tracer tracer;
 
     @WithSpan
@@ -90,9 +90,7 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
         super(Kind.PARTITION_RANGE, isDigest, digestVersion, acceptsTransient, metadata, nowInSec, columnFilter, rowFilter, limits, indexQueryPlan, trackWarnings);
         this.dataRange = dataRange;
         this.requestedSlices = dataRange.clusteringIndexFilter.getSlices(metadata());
-        this.spanContext = Context.current();
-        this.tracer = GlobalOpenTelemetry.getTracerProvider().get("PartitionRangeReadCommand");
-
+        this.tracer = GlobalOpenTelemetry.get().getTracer("PartitionRangeReadCommand");
     }
 
     @WithSpan
@@ -322,7 +320,6 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
     @WithSpan
     public PartitionIterator execute(ConsistencyLevel consistency, ClientState state, Dispatcher.RequestTime requestTime) throws RequestExecutionException
     {
-        Span.current().storeInContext(this.spanContext);
         return StorageProxy.getRangeSlice(this, consistency, requestTime);
     }
 
@@ -333,14 +330,11 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
 
     @WithSpan
     @VisibleForTesting
-    public UnfilteredPartitionIterator queryStorage(final ColumnFamilyStore cfs, ReadExecutionController controller)
+    public UnfilteredPartitionIterator queryStorage(@SpanAttribute("cfs") final ColumnFamilyStore cfs,
+                                                    @SpanAttribute("controller") ReadExecutionController controller)
     {
         final Span currentSpan = Span.current();
-        currentSpan.storeInContext(this.spanContext);
-        ColumnFamilyStore.ViewFragment view = cfs.select(Wrapping.function(
-            this.spanContext,
-            View.selectLive(dataRange().keyRange())
-        ));
+        ColumnFamilyStore.ViewFragment view = cfs.select(Wrapping.function(View.selectLive(dataRange().keyRange())));
         Tracing.trace("Executing seq scan across {} sstables for {}", view.sstables.size(), dataRange().keyRange().getString(metadata().partitionKeyType));
 
         // fetch data from current memtable, historical memtables, and SSTables in the correct order.
@@ -437,10 +431,12 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
                 };
     }
 
+    @WithSpan
     private UnfilteredPartitionIterator checkCacheFilter(UnfilteredPartitionIterator iter, final ColumnFamilyStore cfs)
     {
         class CacheFilter extends Transformation<BaseRowIterator<?>>
         {
+            @WithSpan
             @Override
             public BaseRowIterator<?> applyToPartition(BaseRowIterator<?> iter)
             {

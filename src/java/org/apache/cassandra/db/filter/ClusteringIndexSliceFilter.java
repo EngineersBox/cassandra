@@ -19,6 +19,7 @@ package org.apache.cassandra.db.filter;
 
 import java.io.IOException;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.partitions.CachedPartition;
 import org.apache.cassandra.db.partitions.Partition;
@@ -123,6 +124,7 @@ public class ClusteringIndexSliceFilter extends AbstractClusteringIndexFilter
         return partition.unfilteredIterator(columnFilter, slices, reversed);
     }
 
+    @WithSpan
     public boolean intersects(ClusteringComparator comparator, Slice slice)
     {
         return slices.intersects(slice);

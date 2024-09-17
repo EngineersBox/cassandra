@@ -21,6 +21,7 @@ import java.io.IOError;
 import java.io.IOException;
 import java.util.*;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.rows.*;
@@ -217,6 +218,7 @@ public abstract class UnfilteredPartitionIterators
         };
     }
 
+    @WithSpan
     public static UnfilteredPartitionIterator mergeLazily(final List<? extends UnfilteredPartitionIterator> iterators)
     {
         assert !iterators.isEmpty();
@@ -230,15 +232,18 @@ public abstract class UnfilteredPartitionIterators
         {
             private final List<UnfilteredRowIterator> toMerge = new ArrayList<>(iterators.size());
 
+            @WithSpan
             public void reduce(int idx, UnfilteredRowIterator current)
             {
                 toMerge.add(current);
             }
 
+            @WithSpan
             protected UnfilteredRowIterator getReduced()
             {
                 return new LazilyInitializedUnfilteredRowIterator(toMerge.get(0).partitionKey())
                 {
+                    @WithSpan
                     protected UnfilteredRowIterator initializeIterator()
                     {
                         return UnfilteredRowIterators.merge(toMerge);
@@ -259,11 +264,13 @@ public abstract class UnfilteredPartitionIterators
                 return metadata;
             }
 
+            @WithSpan
             public boolean hasNext()
             {
                 return merged.hasNext();
             }
 
+            @WithSpan
             public UnfilteredRowIterator next()
             {
                 return merged.next();

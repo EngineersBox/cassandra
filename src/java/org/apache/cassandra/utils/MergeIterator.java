@@ -19,6 +19,8 @@ package org.apache.cassandra.utils;
 
 import java.util.*;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
+
 /** Merges sorted input iterators which individually contain unique items. */
 public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implements IMergeIterator<In, Out>
 {
@@ -31,6 +33,7 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
         this.reducer = reducer;
     }
 
+    @WithSpan
     public static <In, Out> MergeIterator<In, Out> get(List<? extends Iterator<In>> sources,
                                                        Comparator<? super In> comparator,
                                                        Reducer<In, Out> reducer)
@@ -44,11 +47,13 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
         return new ManyToOne<>(sources, comparator, reducer);
     }
 
+    @WithSpan
     public Iterable<? extends Iterator<In>> iterators()
     {
         return iterators;
     }
 
+    @WithSpan
     public void close()
     {
         for (int i=0, isize=iterators.size(); i<isize; i++)
@@ -151,6 +156,7 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
             needingAdvance = size;
         }
 
+        @WithSpan
         protected final Out computeNext()
         {
             advance();
@@ -171,6 +177,7 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
          * the heap if the number of consumed elements is high (as it is in the initial heap construction). With non- or
          * lightly-overlapping iterators the procedure finishes after just one (resp. a couple of) comparisons.
          */
+        @WithSpan
         private void advance()
         {
             // Turn the set of candidates into a heap.
@@ -194,6 +201,7 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
          *
          * This relies on the equalParent flag to avoid doing any comparisons.
          */
+        @WithSpan
         private Out consume()
         {
             if (size == 0)
@@ -223,6 +231,7 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
          *
          * @return the largest equal index found in this search.
          */
+        @WithSpan
         private int consumeHeap(int idx)
         {
             if (idx >= size || !heap[idx].equalParent)
@@ -240,6 +249,7 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
          * Whenever an equality is found between two elements that form a new parent-child relationship, the child's
          * equalParent flag is set to true if the elements are equal.
          */
+        @WithSpan
         private void replaceAndSink(Candidate<In> candidate, int currIdx)
         {
             if (candidate == null)
@@ -364,6 +374,7 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
         }
 
         /** @return this if our iterator had an item, and it is now available, otherwise null */
+        @WithSpan
         protected Candidate<In> advance()
         {
             if (lowerBound != null)
@@ -398,6 +409,7 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
             return item == lowerBound;
         }
 
+        @WithSpan
         public <Out> void consume(Reducer<In, Out> reducer)
         {
             if (isLowerBound())
@@ -460,6 +472,7 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
             source = sources.get(0);
         }
 
+        @WithSpan
         protected Out computeNext()
         {
             if (!source.hasNext())
@@ -480,6 +493,7 @@ public abstract class MergeIterator<In,Out> extends AbstractIterator<Out> implem
             source = sources.get(0);
         }
 
+        @WithSpan
         @SuppressWarnings("unchecked")
         protected Out computeNext()
         {

@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Iterators;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cql3.Operator;
 import org.apache.cassandra.db.filter.RowFilter;
 import org.apache.cassandra.schema.ColumnMetadata;
@@ -437,6 +438,7 @@ public abstract class Slices implements Iterable<Slice>
             return Slices.NONE;
         }
 
+        @WithSpan
         @Override
         public boolean intersects(Slice slice)
         {

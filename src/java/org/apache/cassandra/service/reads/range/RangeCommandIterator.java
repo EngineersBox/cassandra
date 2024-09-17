@@ -27,10 +27,7 @@ import com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Context;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -86,8 +83,6 @@ public class RangeCommandIterator extends AbstractIterator<RowIterator> implemen
     // The two following "metric" are maintained to improve the concurrencyFactor
     // when it was not good enough initially.
     private int liveReturned;
-    private final Context spanContext;
-    private final Tracer tracer;
 
     @WithSpan
     RangeCommandIterator(CloseableIterator<ReplicaPlan.ForRangeRead> replicaPlans,
@@ -104,15 +99,12 @@ public class RangeCommandIterator extends AbstractIterator<RowIterator> implemen
         this.totalRangeCount = totalRangeCount;
         this.requestTime = requestTime;
         enforceStrictLiveness = command.metadata().enforceStrictLiveness();
-        this.spanContext = Context.current();
-        this.tracer = GlobalOpenTelemetry.get().getTracer("RangeCommandIterator");
     }
 
     @WithSpan
     @Override
     protected RowIterator computeNext()
     {
-        Span.current().storeInContext(this.spanContext);
         try
         {
             while (sentQueryIterator == null || !sentQueryIterator.hasNext())
@@ -164,7 +156,6 @@ public class RangeCommandIterator extends AbstractIterator<RowIterator> implemen
     private void updateConcurrencyFactor()
     {
         final Span span = Span.current();
-        span.storeInContext(this.spanContext);
         liveReturned += counter.counted();
         span.setAttribute("Counted", counter.counted());
         span.setAttribute("Live returned", liveReturned);
@@ -205,7 +196,6 @@ public class RangeCommandIterator extends AbstractIterator<RowIterator> implemen
     @WithSpan
     private SingleRangeResponse query(ReplicaPlan.ForRangeRead replicaPlan, boolean isFirst)
     {
-        Span.current().storeInContext(this.spanContext);
         PartitionRangeReadCommand rangeCommand = command.forSubRange(replicaPlan.range(), isFirst);
         
         // If enabled, request repaired data tracking info from full replicas, but
@@ -242,7 +232,6 @@ public class RangeCommandIterator extends AbstractIterator<RowIterator> implemen
     @WithSpan
     PartitionIterator sendNextRequests()
     {
-        Span.current().storeInContext(this.spanContext);
         List<PartitionIterator> concurrentQueries = new ArrayList<>(concurrencyFactor);
         List<ReadRepair<?, ?>> readRepairs = new ArrayList<>(concurrencyFactor);
 
