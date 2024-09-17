@@ -31,6 +31,10 @@ import java.util.stream.Collectors;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cache.IRowCacheEntry;
 import org.apache.cassandra.cache.RowCacheKey;
@@ -81,6 +85,7 @@ import org.apache.cassandra.tracing.Tracing;
 import org.apache.cassandra.transport.Dispatcher;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.btree.BTreeSet;
+import org.apache.cassandra.utils.otel.Wrapping;
 
 /**
  * A read command that selects a (part of a) single partition.
@@ -91,6 +96,8 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
 
     protected final DecoratedKey partitionKey;
     protected final ClusteringIndexFilter clusteringIndexFilter;
+    private final Context spanContext;
+    private final Tracer tracer;
 
     @VisibleForTesting
     protected SinglePartitionReadCommand(boolean isDigest,
@@ -110,6 +117,8 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
         assert partitionKey.getPartitioner() == metadata.partitioner;
         this.partitionKey = partitionKey;
         this.clusteringIndexFilter = clusteringIndexFilter;
+        this.spanContext = Context.current();
+        this.tracer = GlobalOpenTelemetry.getTracerProvider().get("SinglePartitionReadCommand");
     }
 
     private static SinglePartitionReadCommand create(boolean isDigest,
@@ -664,6 +673,8 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
     @WithSpan
     private UnfilteredRowIterator queryMemtableAndDiskInternal(ColumnFamilyStore cfs, ReadExecutionController controller)
     {
+        final Span currentSpan = Span.current();
+        currentSpan.storeInContext(this.spanContext);
         /*
          * We have 2 main strategies:
          *   1) We query memtables and sstables simulateneously. This is our most generic strategy and the one we use
@@ -690,7 +701,10 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
         }
 
         Tracing.trace("Acquiring sstable references");
-        ColumnFamilyStore.ViewFragment view = cfs.select(View.select(SSTableSet.LIVE, partitionKey()));
+        ColumnFamilyStore.ViewFragment view = cfs.select(Wrapping.function(
+            this.spanContext,
+            View.select(SSTableSet.LIVE, partitionKey())
+        ));
         view.sstables.sort(SSTableReader.maxTimestampDescending);
         ClusteringIndexFilter filter = clusteringIndexFilter();
         long minTimestamp = Long.MAX_VALUE;
@@ -700,6 +714,9 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
         {
             SSTableReadMetricsCollector metricsCollector = new SSTableReadMetricsCollector();
 
+            final Span memtableIterSpan = this.tracer.spanBuilder("View::memtables.iter")
+                                          .setParent(Context.current().with(currentSpan))
+                                          .startSpan();
             for (Memtable memtable : view.memtables)
             {
                 UnfilteredRowIterator iter = memtable.rowIterator(partitionKey(), filter.getSlices(metadata()), columnFilter(), filter.isReversed(), metricsCollector);
@@ -716,6 +733,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
                 mostRecentPartitionTombstone = Math.max(mostRecentPartitionTombstone,
                                                         iter.partitionLevelDeletion().markedForDeleteAt());
             }
+            memtableIterSpan.end();
 
             /*
              * We can't eliminate full sstables based on the timestamp of what we've already read like
@@ -729,13 +747,20 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
              * In other words, iterating in descending maxTimestamp order allow to do our mostRecentPartitionTombstone
              * elimination in one pass, and minimize the number of sstables for which we read a partition tombstone.
             */
+            final Span sstableSortSpan = this.tracer.spanBuilder("View::sstables.sort")
+                                                    .setParent(Context.current().with(currentSpan))
+                                                    .startSpan();
             view.sstables.sort(SSTableReader.maxTimestampDescending);
+            sstableSortSpan.end();
             int nonIntersectingSSTables = 0;
             int includedDueToTombstones = 0;
 
             if (controller.isTrackingRepairedStatus())
                 Tracing.trace("Collecting data from sstables and tracking repaired status");
 
+            final Span sstableIterSpan = this.tracer.spanBuilder("View::sstables.iter")
+                                         .setParent(Context.current().with(currentSpan))
+                                         .startSpan();
             for (SSTableReader sstable : view.sstables)
             {
                 // if we've already seen a partition tombstone with a timestamp greater
@@ -801,10 +826,13 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
                     }
                 }
             }
+            sstableIterSpan.end();
 
             if (Tracing.isTracing())
                 Tracing.trace("Skipped {}/{} non-slice-intersecting sstables, included {} due to tombstones",
                                nonIntersectingSSTables, view.sstables.size(), includedDueToTombstones);
+            currentSpan.setAttribute("Skipped non-slice-intersecting SSTables", String.format("%d/%d", nonIntersectingSSTables, view.sstables.size()));
+            currentSpan.setAttribute("SSTables Included due to tombstones", includedDueToTombstones);
 
             if (inputCollector.isEmpty())
                 return EmptyIterators.unfilteredRow(cfs.metadata(), partitionKey(), filter.isReversed());

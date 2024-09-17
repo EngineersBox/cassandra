@@ -72,6 +72,7 @@ import com.google.common.util.concurrent.RateLimiter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cache.CounterCacheKey;
 import org.apache.cassandra.cache.IRowCacheEntry;
 import org.apache.cassandra.cache.RowCacheKey;
@@ -2004,6 +2005,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean, Memtable.Owner
         }
     }
 
+    @WithSpan
     public ViewFragment select(Function<View, Iterable<SSTableReader>> filter)
     {
         View view = data.getView();

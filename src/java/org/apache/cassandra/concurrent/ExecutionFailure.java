@@ -125,7 +125,8 @@ public class ExecutionFailure
      */
     private static Runnable enforceOptions(WithResources withResources, Runnable wrap, boolean propagate)
     {
-        return Context.current().wrap(new Runnable()
+        final Context context = Context.current();
+        return context.wrap(new Runnable()
         {
             @Override
             @WithSpan
@@ -133,7 +134,7 @@ public class ExecutionFailure
             {
                 try (@SuppressWarnings("unused") Closeable close = withResources.get())
                 {
-                    wrap.run();
+                    context.wrap(wrap).run();
                 }
                 catch (Throwable t)
                 {
@@ -213,14 +214,15 @@ public class ExecutionFailure
      */
     static <V> Callable<V> enforceOptions(WithResources withResources, Callable<V> wrap)
     {
-        return new Callable<V>()
+        final Context context = Context.current();
+        return context.wrap(new Callable<V>()
         {
             @Override
             public V call() throws Exception
             {
                 try (@SuppressWarnings("unused") Closeable close = withResources.get())
                 {
-                    return wrap.call();
+                    return context.wrap(wrap).call();
                 }
                 catch (Throwable t)
                 {
@@ -234,6 +236,6 @@ public class ExecutionFailure
             {
                 return wrap.toString();
             }
-        };
+        });
     }
 }

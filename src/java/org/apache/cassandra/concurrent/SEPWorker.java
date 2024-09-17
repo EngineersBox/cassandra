@@ -361,7 +361,10 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
             {
                 LockSupport.unpark(thread);
                 final long parkEnd = Clock.Global.nanoTime();
-                this.parkSpan.end();
+                if (this.parkSpan != null)
+                {
+                    this.parkSpan.end();
+                }
                 this.metrics.parkLatency.update(
                     parkEnd - parkStart,
                     TimeUnit.NANOSECONDS
