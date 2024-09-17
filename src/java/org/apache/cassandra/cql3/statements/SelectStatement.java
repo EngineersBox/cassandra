@@ -386,6 +386,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
                         getAggregationSpec(options));
     }
 
+    @WithSpan
     public ReadQuery getQuery(QueryOptions options,
                               ClientState state,
                               ColumnFilter columnFilter,
@@ -400,6 +401,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         return getQuery(options, state, columnFilter, nowInSec, limit);
     }
 
+    @WithSpan
     public ReadQuery getQuery(QueryOptions options,
                               ClientState state,
                               ColumnFilter columnFilter,
@@ -797,6 +799,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         return getRowFilter(QueryOptions.forInternalCalls(Collections.emptyList()), ClientState.forInternalCalls());
     }
 
+    @WithSpan
     private ReadQuery getRangeCommand(QueryOptions options, ClientState state, ColumnFilter columnFilter, DataLimits limit, long nowInSec)
     {
         ClusteringIndexFilter clusteringIndexFilter = makeClusteringIndexFilter(options, state, columnFilter);

@@ -48,6 +48,8 @@ import com.google.common.util.concurrent.Uninterruptibles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.batchlog.Batch;
 import org.apache.cassandra.batchlog.BatchlogManager;
@@ -2184,6 +2186,7 @@ public class StorageProxy implements StorageProxyMBean
         private final ReadCommand command;
         private final ReadCallback handler;
         private final boolean trackRepairedStatus;
+        private final Context spanContext;
 
         public LocalReadRunnable(ReadCommand command, ReadCallback handler, Dispatcher.RequestTime requestTime)
         {
@@ -2196,11 +2199,13 @@ public class StorageProxy implements StorageProxyMBean
             this.command = command;
             this.handler = handler;
             this.trackRepairedStatus = trackRepairedStatus;
+            this.spanContext = Context.current();
         }
 
         @WithSpan
         protected void runMayThrow()
         {
+            Span.current().storeInContext(this.spanContext);
             try
             {
                 MessageParams.reset();

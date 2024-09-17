@@ -135,6 +135,7 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
                                              trackWarnings);
     }
 
+    @WithSpan
     public static PartitionRangeReadCommand create(TableMetadata metadata,
                                                    long nowInSec,
                                                    ColumnFilter columnFilter,
@@ -208,6 +209,7 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
      * first range we queried, then the {@code DataLimits} will have not state and the value of this parameter doesn't
      * matter.
      */
+    @WithSpan
     public PartitionRangeReadCommand forSubRange(AbstractBounds<PartitionPosition> range, boolean isRangeContinuation)
     {
         // If we're not a continuation of whatever range we've previously queried, we should ignore the states of the

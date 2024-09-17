@@ -875,6 +875,7 @@ public abstract class ReadCommand extends AbstractReadQuery
         return new InputCollector<>(view, controller, merge, postLimitPartitions);
     }
 
+    @WithSpan
     InputCollector<UnfilteredPartitionIterator> iteratorsForRange(ColumnFamilyStore.ViewFragment view, ReadExecutionController controller)
     {
         final BiFunction<List<UnfilteredPartitionIterator>, RepairedDataInfo, UnfilteredPartitionIterator> merge =
@@ -909,6 +910,7 @@ public abstract class ReadCommand extends AbstractReadQuery
         List<T> repairedIters;
         List<T> unrepairedIters;
 
+        @WithSpan
         InputCollector(ColumnFamilyStore.ViewFragment view,
                        ReadExecutionController controller,
                        BiFunction<List<T>, RepairedDataInfo, T> repairedMerger,
