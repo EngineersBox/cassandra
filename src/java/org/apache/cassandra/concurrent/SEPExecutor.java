@@ -31,6 +31,7 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.utils.Clock;
@@ -141,11 +142,13 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             tasks.add(new ContextualTask(task, Context.current()));
             int taskPermits;
             Span span;
+            Scope scope;
             while (true)
             {
                 span = this.tracer.spanBuilder("SEPExecutor.permits.compareAndSet")
                                   .setParent(Context.current())
                                   .startSpan();
+                scope = span.makeCurrent();
                 long current = permits.get();
                 taskPermits = taskPermits(current);
                 // because there is no difference in practical terms between the work permit being added or not (the work is already in existence)
@@ -153,10 +156,12 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
                 if (permits.compareAndSet(current, updateTaskPermits(current, taskPermits + 1)))
                 {
                     span.setStatus(StatusCode.OK);
+                    scope.close();
                     span.end();
                     break;
                 }
                 span.setStatus(StatusCode.ERROR);
+                scope.close();;
                 span.end();
             }
             Span.current().addEvent(String.format(
@@ -196,6 +201,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     TakeTaskPermitResult takeTaskPermit(@SpanAttribute("checkForWorkPermitOvercommit") boolean checkForWorkPermitOvercommit)
     {
         Span span;
+        Scope scope;
         TakeTaskPermitResult result;
         final long start = Clock.Global.nanoTime();
         while (true)
@@ -229,6 +235,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             span = this.tracer.spanBuilder("SEPWorker.permits.compareAndSet")
                               .setParent(Context.current())
                               .startSpan();
+            scope = span.makeCurrent();
             if (permits.compareAndSet(current, updated))
             {
                 this.metrics.takeTaskPermitLatency.update(
@@ -236,11 +243,13 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
                 TimeUnit.NANOSECONDS
                 );
                 span.setStatus(StatusCode.OK);
+                scope.close();;
                 span.end();
                 Span.current().addEvent("Result state: " + result.name());
                 return result;
             }
             span.setStatus(StatusCode.ERROR);
+            scope.close();
             span.end();
         }
     }
@@ -252,6 +261,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
         final long start = Clock.Global.nanoTime();
         int taskDelta = takeTaskPermit ? 1 : 0;
         Span span;
+        Scope scope;
         while (true)
         {
             long current = permits.get();
@@ -273,6 +283,7 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             span = this.tracer.spanBuilder("SEPExecutor.permits.compareAndSet")
                    .setParent(Context.current())
                    .startSpan();
+            scope = span.makeCurrent();
             if (permits.compareAndSet(current, combine(taskPermits - taskDelta, workPermits - 1)))
             {
                 this.metrics.takeWorkPermitLatency.update(
@@ -280,10 +291,12 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
                 TimeUnit.NANOSECONDS
                 );
                 span.setStatus(StatusCode.OK);
+                scope.close();
                 span.end();
                 return true;
             }
             span.setStatus(StatusCode.ERROR);
+            scope.close();
             span.end();
         }
     }
@@ -294,11 +307,13 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
     {
         final long start = Clock.Global.nanoTime();
         Span span;
+        Scope scope;
         while (true)
         {
             span = this.tracer.spanBuilder("SEPExecutor.permits.compareAndSet")
                    .setParent(Context.current())
                    .startSpan();
+            scope = span.makeCurrent();
             long current = permits.get();
             int workPermits = workPermits(current);
             if (permits.compareAndSet(current, updateWorkPermits(current, workPermits + 1)))
@@ -308,10 +323,12 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
                     TimeUnit.NANOSECONDS
                 );
                 span.setStatus(StatusCode.OK);
+                scope.close();
                 span.end();
                 return;
             }
             span.setStatus(StatusCode.ERROR);
+            scope.close();
             span.end();
         }
     }
@@ -332,8 +349,13 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
             final Span span = this.tracer.spanBuilder("SEPExecutor.addTask")
                                          .setParent(Context.current())
                                          .startSpan();
-            addTask(task);
-            span.end();
+            try (final Scope scope = span.makeCurrent())
+            {
+                addTask(task);
+            } finally
+            {
+                span.end();
+            }
         }
         else
         {
@@ -342,8 +364,13 @@ public class SEPExecutor implements LocalAwareExecutorPlus, SEPExecutorMBean
                 final Span span = this.tracer.spanBuilder("SEPExecutor::executeImmediately")
                                       .setParent(Context.current())
                                       .startSpan();
-                Context.current().wrap(task).run();
-                span.end();
+                try (final Scope scope = span.makeCurrent())
+                {
+                    Context.current().wrap(task).run();
+                } finally
+                {
+                    span.end();
+                }
             }
             finally
             {

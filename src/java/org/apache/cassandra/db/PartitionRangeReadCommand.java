@@ -27,6 +27,7 @@ import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -345,36 +346,46 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
             final Span memtableIterSpan = this.tracer.spanBuilder("View::memtables.iter")
                                           .setParent(Context.current().with(currentSpan))
                                           .startSpan();
-            for (Memtable memtable : view.memtables)
+            try (final Scope socpe = memtableIterSpan.makeCurrent())
             {
-                UnfilteredPartitionIterator iter = memtable.partitionIterator(columnFilter(), dataRange(), readCountUpdater);
-                controller.updateMinOldestUnrepairedTombstone(memtable.getMinLocalDeletionTime());
-                inputCollector.addMemtableIterator(RTBoundValidator.validate(iter, RTBoundValidator.Stage.MEMTABLE, false));
+                for (Memtable memtable : view.memtables)
+                {
+                    UnfilteredPartitionIterator iter = memtable.partitionIterator(columnFilter(), dataRange(), readCountUpdater);
+                    controller.updateMinOldestUnrepairedTombstone(memtable.getMinLocalDeletionTime());
+                    inputCollector.addMemtableIterator(RTBoundValidator.validate(iter, RTBoundValidator.Stage.MEMTABLE, false));
+                }
+            } finally
+            {
+                memtableIterSpan.end();
             }
-            memtableIterSpan.end();
 
             final Span sstableIterSpan = this.tracer.spanBuilder("View::sstables.iter")
                                          .setParent(Context.current().with(currentSpan))
                                          .startSpan();
             int selectedSSTablesCnt = 0;
-            for (SSTableReader sstable : view.sstables)
+            try (final Scope scope = sstableIterSpan.makeCurrent())
             {
-                boolean intersects = intersects(sstable);
-                boolean hasPartitionLevelDeletions = hasPartitionLevelDeletions(sstable);
-                boolean hasRequiredStatics = hasRequiredStatics(sstable);
+                for (SSTableReader sstable : view.sstables)
+                {
+                    boolean intersects = intersects(sstable);
+                    boolean hasPartitionLevelDeletions = hasPartitionLevelDeletions(sstable);
+                    boolean hasRequiredStatics = hasRequiredStatics(sstable);
 
-                if (!intersects && !hasPartitionLevelDeletions && !hasRequiredStatics)
-                    continue;
+                    if (!intersects && !hasPartitionLevelDeletions && !hasRequiredStatics)
+                        continue;
 
-                UnfilteredPartitionIterator iter = sstable.partitionIterator(columnFilter(), dataRange(), readCountUpdater);
-                inputCollector.addSSTableIterator(sstable, RTBoundValidator.validate(iter, RTBoundValidator.Stage.SSTABLE, false));
+                    UnfilteredPartitionIterator iter = sstable.partitionIterator(columnFilter(), dataRange(), readCountUpdater);
+                    inputCollector.addSSTableIterator(sstable, RTBoundValidator.validate(iter, RTBoundValidator.Stage.SSTABLE, false));
 
-                if (!sstable.isRepaired())
-                    controller.updateMinOldestUnrepairedTombstone(sstable.getMinLocalDeletionTime());
+                    if (!sstable.isRepaired())
+                        controller.updateMinOldestUnrepairedTombstone(sstable.getMinLocalDeletionTime());
 
-                selectedSSTablesCnt++;
+                    selectedSSTablesCnt++;
+                }
+            } finally
+            {
+                sstableIterSpan.end();
             }
-            sstableIterSpan.end();
 
             final int finalSelectedSSTables = selectedSSTablesCnt;
             Span.current().setAttribute("Selected SSTables", finalSelectedSSTables);

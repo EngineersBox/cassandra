@@ -31,6 +31,7 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.metrics.scheduler.SEPWorkerMetrics;
@@ -128,6 +129,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         ContextualTask task = null;
         final long start = Clock.Global.nanoTime();
         Span span;
+        Scope scope;
         try
         {
             while (true)
@@ -135,9 +137,11 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 span = this.tracer.spanBuilder("SEPWorker::runLoop")
                                   .setParent(Context.current())
                                   .startSpan();
+                scope = span.makeCurrent();
                 if (pool.shuttingDown)
                 {
                     span.addEvent("Shutting down");
+                    scope.close();
                     span.end();
                     this.metrics.runLatency.update(
                         Clock.Global.nanoTime() - start,
@@ -152,6 +156,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                     doWaitSpin();
                     // if the pool is terminating, but we have been assigned STOP_SIGNALLED, if we do not re-check
                     // whether the pool is shutting down this thread will go to sleep and block forever
+                    scope.close();;
                     span.end();
                     continue;
                 }
@@ -176,6 +181,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 if (assigned == null)
                 {
                     span.addEvent("No SEPExecutor assigned");
+                    scope.close();
                     span.end();
                     continue;
                 }
@@ -195,51 +201,61 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 final Span innerSpan = this.tracer.spanBuilder("SEPWorker::innerTaskLoop")
                                             .setParent(Context.current().with(span))
                                             .startSpan();
-                while (true)
+                try (final Scope innerScope = innerSpan.makeCurrent())
                 {
+                    while (true)
+                    {
 
-                    // before we process any task, we maybe schedule a new worker _to our executor only_; this
-                    // ensures that even once all spinning threads have found work, if more work is left to be serviced
-                    // and permits are available, it will be dealt with immediately.
+                        // before we process any task, we maybe schedule a new worker _to our executor only_; this
+                        // ensures that even once all spinning threads have found work, if more work is left to be serviced
+                        // and permits are available, it will be dealt with immediately.
 //                    logger.info("[{}] maybeSchedule() {}", workerId, Clock.Global.nanoTime() - _start);
-                    innerSpan.addEvent("Attempting to schedule threads to assigned SEPExecutor");
-                    assigned.maybeSchedule();
+                        innerSpan.addEvent("Attempting to schedule threads to assigned SEPExecutor");
+                        assigned.maybeSchedule();
 
-                    // we know there is work waiting, as we have a work permit, so poll() will always succeed
-                    final Span taskSpan = this.tracer.spanBuilder("Runnable.run()")
-                                                     .setParent(Context.current().with(innerSpan))
-                                                     .startSpan();
-                    final Span ctxSpan = this.tracer.spanBuilder("ContextualTask.runnable.run()")
-                                                    .setParent(task.context)
-                                                    .addLink(taskSpan.getSpanContext())
-                                                    .startSpan();
-                    final long startTask = Clock.Global.nanoTime();
-                    task.runnable.run();
-                    this.metrics.taskRunLatency.update(
-                        Clock.Global.nanoTime() - startTask,
-                        TimeUnit.NANOSECONDS
-                    );
-                    ctxSpan.end();
-                    taskSpan.end();
-                    assigned.onCompletion();
-                    task = null;
+                        // we know there is work waiting, as we have a work permit, so poll() will always succeed
+                        final Span taskSpan = this.tracer.spanBuilder("Runnable.run()")
+                                                         .setParent(Context.current().with(innerSpan))
+                                                         .startSpan();
+                        final Span ctxSpan = this.tracer.spanBuilder("ContextualTask.runnable.run()")
+                                                        .setParent(task.context)
+                                                        .addLink(taskSpan.getSpanContext())
+                                                        .startSpan();
+                        try (final Scope taskScope = taskSpan.makeCurrent(); final Scope ctxScope = ctxSpan.makeCurrent())
+                        {
+                            final long startTask = Clock.Global.nanoTime();
+                            task.runnable.run();
+                            this.metrics.taskRunLatency.update(
+                            Clock.Global.nanoTime() - startTask,
+                            TimeUnit.NANOSECONDS
+                            );
+                        } finally
+                        {
+                            ctxSpan.end();
+                            taskSpan.end();
+                        }
+                        assigned.onCompletion();
+                        task = null;
 
-                    if (shutdown = assigned.shuttingDown)
-                    {
-                        innerSpan.addEvent("Assigned SEPExecutor Shutting Down");
-                        break;
+                        if (shutdown = assigned.shuttingDown)
+                        {
+                            innerSpan.addEvent("Assigned SEPExecutor Shutting Down");
+                            break;
+                        }
+
+                        if (TOOK_PERMIT != (status = assigned.takeTaskPermit(true)))
+                        {
+                            innerSpan.addEvent("Could not take task permit");
+                            break;
+                        }
+
+                        task = assigned.tasks.poll();
+                        currentTask.lazySet(task);
                     }
-
-                    if (TOOK_PERMIT != (status = assigned.takeTaskPermit(true)))
-                    {
-                        innerSpan.addEvent("Could not take task permit");
-                        break;
-                    }
-
-                    task = assigned.tasks.poll();
-                    currentTask.lazySet(task);
+                } finally
+                {
+                    innerSpan.end();
                 }
-                innerSpan.end();
                 // return our work permit, and maybe signal shutdown
                 currentTask.lazySet(null);
 
@@ -258,6 +274,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                         Clock.Global.nanoTime() - start,
                         TimeUnit.NANOSECONDS
                     );
+                    scope.close();
                     span.end();
                     return;
                 }
@@ -269,6 +286,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 {
                     startSpinning();
                 }
+                scope.close();
                 span.end();
             }
         }
@@ -318,6 +336,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         Work state = get();
         final long start = Clock.Global.nanoTime();
         Span span;
+        Scope scope;
         // Note that this loop only performs multiple iterations when
         // CAS on aquiring work fails. Every other case terminates the
         // loop and the method call.
@@ -326,14 +345,17 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
             span = this.tracer.spanBuilder("SEPWorker.state.compareAndSet")
                    .setParent(Context.current())
                    .startSpan();
+            scope = span.makeCurrent();
             if (!compareAndSet(state, work))
             {
                 state = get();
                 span.setStatus(StatusCode.ERROR);
+                scope.close();;
                 span.end();
                 continue;
             }
             span.setStatus(StatusCode.OK);
+            scope.close();
             span.end();
             this.metrics.setWorkStateOrdinal(work);
             // if we were spinning, exit the state (decrement the count); this is valid even if we are already spinning,

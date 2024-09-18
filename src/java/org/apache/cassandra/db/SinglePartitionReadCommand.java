@@ -35,6 +35,7 @@ import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cache.IRowCacheEntry;
 import org.apache.cassandra.cache.RowCacheKey;
@@ -711,23 +712,28 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
             final Span memtableIterSpan = this.tracer.spanBuilder("View::memtables.iter")
                                           .setParent(Context.current().with(currentSpan))
                                           .startSpan();
-            for (Memtable memtable : view.memtables)
+            try (final Scope scope = memtableIterSpan.makeCurrent())
             {
-                UnfilteredRowIterator iter = memtable.rowIterator(partitionKey(), filter.getSlices(metadata()), columnFilter(), filter.isReversed(), metricsCollector);
-                if (iter == null)
-                    continue;
+                for (Memtable memtable : view.memtables)
+                {
+                    UnfilteredRowIterator iter = memtable.rowIterator(partitionKey(), filter.getSlices(metadata()), columnFilter(), filter.isReversed(), metricsCollector);
+                    if (iter == null)
+                        continue;
 
-                if (memtable.getMinTimestamp() != Memtable.NO_MIN_TIMESTAMP)
-                    minTimestamp = Math.min(minTimestamp, memtable.getMinTimestamp());
+                    if (memtable.getMinTimestamp() != Memtable.NO_MIN_TIMESTAMP)
+                        minTimestamp = Math.min(minTimestamp, memtable.getMinTimestamp());
 
-                // Memtable data is always considered unrepaired
-                controller.updateMinOldestUnrepairedTombstone(memtable.getMinLocalDeletionTime());
-                inputCollector.addMemtableIterator(RTBoundValidator.validate(iter, RTBoundValidator.Stage.MEMTABLE, false));
+                    // Memtable data is always considered unrepaired
+                    controller.updateMinOldestUnrepairedTombstone(memtable.getMinLocalDeletionTime());
+                    inputCollector.addMemtableIterator(RTBoundValidator.validate(iter, RTBoundValidator.Stage.MEMTABLE, false));
 
-                mostRecentPartitionTombstone = Math.max(mostRecentPartitionTombstone,
-                                                        iter.partitionLevelDeletion().markedForDeleteAt());
+                    mostRecentPartitionTombstone = Math.max(mostRecentPartitionTombstone,
+                                                            iter.partitionLevelDeletion().markedForDeleteAt());
+                }
+            } finally
+            {
+                memtableIterSpan.end();
             }
-            memtableIterSpan.end();
 
             /*
              * We can't eliminate full sstables based on the timestamp of what we've already read like
@@ -744,8 +750,13 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
             final Span sstableSortSpan = this.tracer.spanBuilder("View::sstables.sort")
                                                     .setParent(Context.current().with(currentSpan))
                                                     .startSpan();
-            view.sstables.sort(SSTableReader.maxTimestampDescending);
-            sstableSortSpan.end();
+            try (final Scope scope = sstableSortSpan.makeCurrent())
+            {
+                view.sstables.sort(SSTableReader.maxTimestampDescending);
+            } finally
+            {
+                sstableSortSpan.end();
+            }
             int nonIntersectingSSTables = 0;
             int includedDueToTombstones = 0;
 
@@ -755,72 +766,77 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
             final Span sstableIterSpan = this.tracer.spanBuilder("View::sstables.iter")
                                          .setParent(Context.current().with(currentSpan))
                                          .startSpan();
-            for (SSTableReader sstable : view.sstables)
+            try (final Scope scope = sstableSortSpan.makeCurrent())
             {
-                // if we've already seen a partition tombstone with a timestamp greater
-                // than the most recent update to this sstable, we can skip it
-                // if we're tracking repaired status, we mark the repaired digest inconclusive
-                // as other replicas may not have seen this partition delete and so could include
-                // data from this sstable (or others) in their digests
-                if (sstable.getMaxTimestamp() < mostRecentPartitionTombstone)
+                for (SSTableReader sstable : view.sstables)
                 {
-                    inputCollector.markInconclusive();
-                    break;
-                }
+                    // if we've already seen a partition tombstone with a timestamp greater
+                    // than the most recent update to this sstable, we can skip it
+                    // if we're tracking repaired status, we mark the repaired digest inconclusive
+                    // as other replicas may not have seen this partition delete and so could include
+                    // data from this sstable (or others) in their digests
+                    if (sstable.getMaxTimestamp() < mostRecentPartitionTombstone)
+                    {
+                        inputCollector.markInconclusive();
+                        break;
+                    }
 
-                boolean intersects = intersects(sstable);
-                boolean hasRequiredStatics = hasRequiredStatics(sstable);
-                boolean hasPartitionLevelDeletions = hasPartitionLevelDeletions(sstable);
+                    boolean intersects = intersects(sstable);
+                    boolean hasRequiredStatics = hasRequiredStatics(sstable);
+                    boolean hasPartitionLevelDeletions = hasPartitionLevelDeletions(sstable);
 
-                if (!intersects && !hasRequiredStatics && !hasPartitionLevelDeletions)
-                {
-                    nonIntersectingSSTables++;
-                    continue;
-                }
+                    if (!intersects && !hasRequiredStatics && !hasPartitionLevelDeletions)
+                    {
+                        nonIntersectingSSTables++;
+                        continue;
+                    }
 
-                if (intersects || hasRequiredStatics)
-                {
-                    if (!sstable.isRepaired())
-                        controller.updateMinOldestUnrepairedTombstone(sstable.getMinLocalDeletionTime());
-
-                    // 'iter' is added to iterators which is closed on exception, or through the closing of the final merged iterator
-                    UnfilteredRowIterator iter = intersects ? makeRowIteratorWithLowerBound(cfs, sstable, metricsCollector)
-                                                            : makeRowIteratorWithSkippedNonStaticContent(cfs, sstable, metricsCollector);
-
-                    inputCollector.addSSTableIterator(sstable, iter);
-                    mostRecentPartitionTombstone = Math.max(mostRecentPartitionTombstone,
-                                                            iter.partitionLevelDeletion().markedForDeleteAt());
-                }
-                else
-                {
-                    nonIntersectingSSTables++;
-
-                    // if the sstable contained range or cell tombstones, it would intersect; since we are here, it means
-                    // that there are no cell or range tombstones we are interested in (due to the filter)
-                    // however, we know that there are partition level deletions in this sstable and we need to make
-                    // an iterator figure out that (see `StatsMetadata.hasPartitionLevelDeletions`)
-
-                    // 'iter' is added to iterators which is closed on exception, or through the closing of the final merged iterator
-                    UnfilteredRowIterator iter = makeRowIteratorWithSkippedNonStaticContent(cfs, sstable, metricsCollector);
-
-                    // if the sstable contains a partition delete, then we must include it regardless of whether it
-                    // shadows any other data seen locally as we can't guarantee that other replicas have seen it
-                    if (!iter.partitionLevelDeletion().isLive())
+                    if (intersects || hasRequiredStatics)
                     {
                         if (!sstable.isRepaired())
                             controller.updateMinOldestUnrepairedTombstone(sstable.getMinLocalDeletionTime());
+
+                        // 'iter' is added to iterators which is closed on exception, or through the closing of the final merged iterator
+                        UnfilteredRowIterator iter = intersects ? makeRowIteratorWithLowerBound(cfs, sstable, metricsCollector)
+                                                                : makeRowIteratorWithSkippedNonStaticContent(cfs, sstable, metricsCollector);
+
                         inputCollector.addSSTableIterator(sstable, iter);
-                        includedDueToTombstones++;
                         mostRecentPartitionTombstone = Math.max(mostRecentPartitionTombstone,
                                                                 iter.partitionLevelDeletion().markedForDeleteAt());
                     }
                     else
                     {
-                        iter.close();
+                        nonIntersectingSSTables++;
+
+                        // if the sstable contained range or cell tombstones, it would intersect; since we are here, it means
+                        // that there are no cell or range tombstones we are interested in (due to the filter)
+                        // however, we know that there are partition level deletions in this sstable and we need to make
+                        // an iterator figure out that (see `StatsMetadata.hasPartitionLevelDeletions`)
+
+                        // 'iter' is added to iterators which is closed on exception, or through the closing of the final merged iterator
+                        UnfilteredRowIterator iter = makeRowIteratorWithSkippedNonStaticContent(cfs, sstable, metricsCollector);
+
+                        // if the sstable contains a partition delete, then we must include it regardless of whether it
+                        // shadows any other data seen locally as we can't guarantee that other replicas have seen it
+                        if (!iter.partitionLevelDeletion().isLive())
+                        {
+                            if (!sstable.isRepaired())
+                                controller.updateMinOldestUnrepairedTombstone(sstable.getMinLocalDeletionTime());
+                            inputCollector.addSSTableIterator(sstable, iter);
+                            includedDueToTombstones++;
+                            mostRecentPartitionTombstone = Math.max(mostRecentPartitionTombstone,
+                                                                    iter.partitionLevelDeletion().markedForDeleteAt());
+                        }
+                        else
+                        {
+                            iter.close();
+                        }
                     }
                 }
+            } finally
+            {
+                sstableIterSpan.end();
             }
-            sstableIterSpan.end();
 
             if (Tracing.isTracing())
                 Tracing.trace("Skipped {}/{} non-slice-intersecting sstables, included {} due to tombstones",
