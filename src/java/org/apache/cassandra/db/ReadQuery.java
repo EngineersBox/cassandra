@@ -164,6 +164,7 @@ public interface ReadQuery
      * @param executionController the {@code ReadExecutionController} protecting the read.
      * @return the result of the read query.
      */
+    @WithSpan
     public UnfilteredPartitionIterator executeLocally(ReadExecutionController executionController);
 
     /**

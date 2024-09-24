@@ -99,6 +99,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
     protected final ClusteringIndexFilter clusteringIndexFilter;
     private final Tracer tracer;
 
+    @WithSpan
     @VisibleForTesting
     protected SinglePartitionReadCommand(boolean isDigest,
                                          int digestVersion,
@@ -120,6 +121,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
         this.tracer = GlobalOpenTelemetry.getTracerProvider().get("SinglePartitionReadCommand");
     }
 
+    @WithSpan
     private static SinglePartitionReadCommand create(boolean isDigest,
                                                     int digestVersion,
                                                     boolean acceptsTransient,
@@ -176,6 +178,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
      *
      * @return a newly created read command.
      */
+    @WithSpan
     public static SinglePartitionReadCommand create(TableMetadata metadata,
                                                     long nowInSec,
                                                     ColumnFilter columnFilter,
@@ -212,6 +215,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
      *
      * @return a newly created read command.
      */
+    @WithSpan
     public static SinglePartitionReadCommand create(TableMetadata metadata,
                                                     long nowInSec,
                                                     ColumnFilter columnFilter,
@@ -1285,6 +1289,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
      */
     public static class Group extends SinglePartitionReadQuery.Group<SinglePartitionReadCommand>
     {
+        @WithSpan
         public static Group create(TableMetadata metadata,
                                    long nowInSec,
                                    ColumnFilter columnFilter,
@@ -1318,6 +1323,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
             return create(Collections.singletonList(command), command.limits());
         }
 
+        @WithSpan
         public static Group create(List<SinglePartitionReadCommand> commands, DataLimits limits)
         {
             return commands.get(0).metadata().isVirtual() ?

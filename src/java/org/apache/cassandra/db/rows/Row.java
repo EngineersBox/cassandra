@@ -22,6 +22,9 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cache.IMeasurableMemory;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.filter.ColumnFilter;
@@ -727,8 +730,10 @@ public interface Row extends Unfiltered, Iterable<ColumnData>, IMeasurableMemory
             lastRowSet = i;
         }
 
-        public Row merge(DeletionTime activeDeletion)
+        @WithSpan
+        public Row merge(@SpanAttribute("activeDeletion") DeletionTime activeDeletion)
         {
+            Span.current().setAttribute("rowsToMerge", this.rowsToMerge);
             // If for this clustering we have only one row version and have no activeDeletion (i.e. nothing to filter out),
             // then we can just return that single row
             if (rowsToMerge == 1 && activeDeletion.isLive())

@@ -333,6 +333,7 @@ public abstract class ReadCommand extends AbstractReadQuery
 
     protected abstract ReadCommand copyAsDigestQuery();
 
+    @WithSpan
     protected abstract UnfilteredPartitionIterator queryStorage(ColumnFamilyStore cfs, ReadExecutionController executionController);
 
     /**

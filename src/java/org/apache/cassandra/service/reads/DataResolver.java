@@ -28,6 +28,7 @@ import javax.annotation.Nullable;
 
 import com.google.common.base.Joiner;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.DeletionTime;
@@ -78,6 +79,7 @@ public class DataResolver<E extends Endpoints<E>, P extends ReplicaPlan.ForRead<
         this.trackRepairedStatus = trackRepairedStatus;
     }
 
+    @WithSpan
     public PartitionIterator getData()
     {
         ReadResponse response = responses.get(0).payload;
@@ -89,11 +91,13 @@ public class DataResolver<E extends Endpoints<E>, P extends ReplicaPlan.ForRead<
         return !responses.isEmpty();
     }
 
+    @WithSpan
     public PartitionIterator resolve()
     {
         return resolve(null);
     }
 
+    @WithSpan
     public PartitionIterator resolve(@Nullable Runnable runOnShortRead)
     {
         // We could get more responses while this method runs, which is ok (we're happy to ignore any response not here

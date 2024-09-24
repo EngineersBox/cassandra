@@ -726,6 +726,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         return restrictions;
     }
 
+    @WithSpan
     private ReadQuery getSliceCommands(QueryOptions options, ClientState state, ColumnFilter columnFilter,
                                        DataLimits limit, long nowInSec)
     {

@@ -27,6 +27,8 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.MessageParams;
 import org.apache.cassandra.db.PartitionRangeReadCommand;
@@ -95,7 +97,9 @@ public class ReadCallback<E extends Endpoints<E>, P extends ReplicaPlan.ForRead<
         return replicaPlan.get();
     }
 
-    public boolean await(long commandTimeout, TimeUnit unit)
+    @WithSpan
+    public boolean await(@SpanAttribute("commandTimeout") long commandTimeout,
+                         @SpanAttribute("unit") TimeUnit unit)
     {
         return awaitUntil(requestTime.computeDeadline(unit.toNanos(commandTimeout)));
     }
@@ -113,6 +117,7 @@ public class ReadCallback<E extends Endpoints<E>, P extends ReplicaPlan.ForRead<
      *
      * We should _not_ speculate in all these cases, since by that time we are already past request deadline.
      */
+    @WithSpan
     public boolean awaitUntil(long deadline)
     {
         try
@@ -125,6 +130,7 @@ public class ReadCallback<E extends Endpoints<E>, P extends ReplicaPlan.ForRead<
         }
     }
 
+    @WithSpan
     public void awaitResults() throws ReadFailureException, ReadTimeoutException
     {
         boolean signaled = await(command.getTimeout(MILLISECONDS), TimeUnit.MILLISECONDS);
@@ -183,8 +189,9 @@ public class ReadCallback<E extends Endpoints<E>, P extends ReplicaPlan.ForRead<
         return blockFor;
     }
 
+    @WithSpan
     @Override
-    public void onResponse(Message<ReadResponse> message)
+    public void onResponse(@SpanAttribute("message") Message<ReadResponse> message)
     {
         assertWaitingFor(message.from());
         Map<ParamType, Object> params = message.header.params();
@@ -224,7 +231,8 @@ public class ReadCallback<E extends Endpoints<E>, P extends ReplicaPlan.ForRead<
         return current;
     }
 
-    public void response(ReadResponse result)
+    @WithSpan
+    public void response(@SpanAttribute("result") ReadResponse result)
     {
         Verb kind = command.isRangeRequest() ? Verb.RANGE_RSP : Verb.READ_RSP;
         Message<ReadResponse> message = Message.internalResponse(kind, result);
@@ -238,8 +246,10 @@ public class ReadCallback<E extends Endpoints<E>, P extends ReplicaPlan.ForRead<
         return true;
     }
 
+    @WithSpan
     @Override
-    public void onFailure(InetAddressAndPort from, RequestFailureReason failureReason)
+    public void onFailure(@SpanAttribute("from") InetAddressAndPort from,
+                          @SpanAttribute("failureReason") RequestFailureReason failureReason)
     {
         assertWaitingFor(from);
                 

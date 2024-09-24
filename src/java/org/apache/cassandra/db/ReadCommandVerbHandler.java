@@ -20,6 +20,7 @@ package org.apache.cassandra.db;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.partitions.UnfilteredPartitionIterator;
 import org.apache.cassandra.dht.Token;
@@ -40,6 +41,7 @@ public class ReadCommandVerbHandler implements IVerbHandler<ReadCommand>
 
     private static final Logger logger = LoggerFactory.getLogger(ReadCommandVerbHandler.class);
 
+    @WithSpan
     public void doVerb(Message<ReadCommand> message)
     {
         if (StorageService.instance.isBootstrapMode())

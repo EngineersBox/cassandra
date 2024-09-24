@@ -46,6 +46,7 @@ import org.apache.cassandra.transport.ProtocolVersion;
  */
 public interface SinglePartitionReadQuery extends ReadQuery
 {
+    @WithSpan
     public static Group<? extends SinglePartitionReadQuery> createGroup(TableMetadata metadata,
                                                                         long nowInSec,
                                                                         ColumnFilter columnFilter,

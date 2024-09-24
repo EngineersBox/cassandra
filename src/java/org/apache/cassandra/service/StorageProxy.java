@@ -48,8 +48,11 @@ import com.google.common.util.concurrent.Uninterruptibles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.batchlog.Batch;
 import org.apache.cassandra.batchlog.BatchlogManager;
@@ -2186,27 +2189,33 @@ public class StorageProxy implements StorageProxyMBean
         private final ReadCommand command;
         private final ReadCallback handler;
         private final boolean trackRepairedStatus;
-        private final Context spanContext;
+        private final Context context;
+        private final Tracer tracer;
 
         public LocalReadRunnable(ReadCommand command, ReadCallback handler, Dispatcher.RequestTime requestTime)
         {
             this(command, handler, requestTime, false);
         }
 
+        @WithSpan
         public LocalReadRunnable(ReadCommand command, ReadCallback handler, Dispatcher.RequestTime requestTime, boolean trackRepairedStatus)
         {
             super(Verb.READ_REQ, requestTime);
             this.command = command;
             this.handler = handler;
             this.trackRepairedStatus = trackRepairedStatus;
-            this.spanContext = Context.current();
+            this.context = Context.current();
+            this.tracer = GlobalOpenTelemetry.getTracerProvider().get("LocalReadRunnable");
         }
 
         @WithSpan
         protected void runMayThrow()
         {
-            Span.current().storeInContext(this.spanContext);
-            try
+            final Span span = this.tracer.spanBuilder("LocalReadRunnable::runMayThrow")
+                              .setParent(this.context)
+                              .addLink(Span.current().getSpanContext())
+                              .startSpan();
+            try (final Scope ignored = span.makeCurrent())
             {
                 MessageParams.reset();
 
@@ -2262,6 +2271,8 @@ public class StorageProxy implements StorageProxyMBean
                     handler.onFailure(FBUtilities.getBroadcastAddressAndPort(), RequestFailureReason.UNKNOWN);
                     throw t;
                 }
+            } finally {
+                span.end();
             }
         }
 

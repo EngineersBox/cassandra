@@ -22,6 +22,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.Columns;
 import org.apache.cassandra.db.DecoratedKey;
@@ -582,6 +583,7 @@ public abstract class UnfilteredRowIterators
             @WithSpan
             protected Unfiltered getReduced()
             {
+                Span.current().setAttribute("nextKind", this.nextKind == null ? "<NONE>" : this.nextKind.name());
                 if (nextKind == Unfiltered.Kind.ROW)
                 {
                     Row merged = rowMerger.merge(markerMerger.activeDeletion());
