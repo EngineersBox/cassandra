@@ -2213,7 +2213,6 @@ public class StorageProxy implements StorageProxyMBean
         {
             final Span span = this.tracer.spanBuilder("LocalReadRunnable::runMayThrow")
                               .setParent(this.context)
-                              .addLink(Span.current().getSpanContext())
                               .startSpan();
             try (final Scope ignored = span.makeCurrent())
             {

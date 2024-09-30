@@ -26,6 +26,8 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Streams;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cql3.*;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.cql3.statements.Bound;
@@ -832,10 +834,11 @@ public final class StatementRestrictions
      * @param options the query options
      * @return the partition key bounds
      */
+    @WithSpan
     public AbstractBounds<PartitionPosition> getPartitionKeyBounds(QueryOptions options)
     {
         IPartitioner p = table.partitioner;
-
+        Span.current().setAttribute("isOnToken", partitionKeyRestrictions.isOnToken());
         if (partitionKeyRestrictions.isOnToken())
         {
             return getPartitionKeyBoundsForTokenRestrictions(p, options);
@@ -873,6 +876,7 @@ public final class StatementRestrictions
                 : new ExcludingBounds<>(startKey, finishKey);
     }
 
+    @WithSpan
     private AbstractBounds<PartitionPosition> getPartitionKeyBoundsForTokenRestrictions(IPartitioner p,
                                                                                         QueryOptions options)
     {

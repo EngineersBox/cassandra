@@ -22,6 +22,7 @@ import com.google.common.collect.Iterables;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.PartitionPosition;
+import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.dht.AbstractBounds;
 
 import java.util.function.Predicate;
@@ -161,6 +162,15 @@ public interface ReplicaPlan<E extends Endpoints<E>, P extends ReplicaPlan<E, P>
         public ForRangeRead withContacts(EndpointsForRange newContact)
         {
             return new ForRangeRead(keyspace, replicationStrategy, consistencyLevel, range, readCandidates(), newContact, vnodeCount);
+        }
+
+        public String toString(final AbstractType<?> partitionKey) {
+            return String.format(
+                "ForRangeRead[Range: %s VNode Count: %d] - %s",
+                this.range.getString(partitionKey),
+                this.vnodeCount,
+                super.toString()
+            );
         }
     }
 

@@ -28,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.concurrent.Stage;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -194,8 +195,13 @@ public class RangeCommandIterator extends AbstractIterator<RowIterator> implemen
      * that it's the query that "continues" whatever we're previously queried).
      */
     @WithSpan
-    private SingleRangeResponse query(ReplicaPlan.ForRangeRead replicaPlan, boolean isFirst)
+    private SingleRangeResponse query(ReplicaPlan.ForRangeRead replicaPlan,
+                                      @SpanAttribute("isFirst") boolean isFirst)
     {
+        Span.current().setAttribute(
+            "replicaPlan",
+            replicaPlan.toString(this.command.metadata().partitionKeyType)
+        );
         PartitionRangeReadCommand rangeCommand = command.forSubRange(replicaPlan.range(), isFirst);
         
         // If enabled, request repaired data tracking info from full replicas, but

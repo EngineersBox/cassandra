@@ -527,29 +527,39 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
     private void maybeStop(@SpanAttribute("stopCheck") long stopCheck,
                            @SpanAttribute("now") long now)
     {
+        final Span span = Span.current();
         final long start = Clock.Global.nanoTime();
         long delta = now - stopCheck;
         if (delta <= 0)
         {
+            span.addEvent("delta negative: " + delta);
             // if stopCheck has caught up with present, we've been spinning too much, so if we can atomically
             // set it to the past again, we should stop a worker
             if (pool.stopCheck.compareAndSet(stopCheck, now - stopCheckInterval))
             {
+                span.addEvent("stopCheck CAS succeeded. Old: " + stopCheck + " New: " + (now - stopCheckInterval));
                 // try and stop ourselves;
                 // if we've already been assigned work stop another worker
                 if (!assign(Work.STOP_SIGNALLED, true))
                 {
+                    span.addEvent("Cannot self-stop, stoppping other worker");
                     pool.schedule(Work.STOP_SIGNALLED);
+                } else {
+                    span.addEvent("Stopped self");
                 }
+            } else {
+                span.addEvent("stopCheck CAS failed");
             }
         }
         else if (soleSpinnerSpinTime > stopCheckInterval && pool.spinningCount.get() == 1)
         {
+            span.addEvent("Spinning time over threshold and only self-spinning, stopping self");
             // permit self-stopping
             assign(Work.STOP_SIGNALLED, true);
         }
         else
         {
+            span.addEvent("Conditions insufficient to self-stop");
             // if stop check has gotten too far behind present, update it so new spins can affect it
             while (delta > stopCheckInterval * 2 && !pool.stopCheck.compareAndSet(stopCheck, now - stopCheckInterval))
             {

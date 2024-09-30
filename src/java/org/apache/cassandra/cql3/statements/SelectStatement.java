@@ -153,16 +153,17 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
                                                                        false,
                                                                        false);
 
-    public SelectStatement(TableMetadata table,
+    @WithSpan
+    public SelectStatement(@SpanAttribute("table") TableMetadata table,
                            VariableSpecifications bindVariables,
-                           Parameters parameters,
-                           Selection selection,
-                           StatementRestrictions restrictions,
+                           @SpanAttribute("parameters") Parameters parameters,
+                           @SpanAttribute("selection") Selection selection,
+                           @SpanAttribute("restrictions") StatementRestrictions restrictions,
                            boolean isReversed,
                            AggregationSpecification.Factory aggregationSpecFactory,
                            ColumnComparator<List<ByteBuffer>> orderingComparator,
-                           Term limit,
-                           Term perPartitionLimit)
+                           @SpanAttribute("limit") Term limit,
+                           @SpanAttribute("perPartitionLimit") Term perPartitionLimit)
     {
         this.table = table;
         this.bindVariables = bindVariables;
@@ -402,11 +403,11 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
     }
 
     @WithSpan
-    public ReadQuery getQuery(QueryOptions options,
-                              ClientState state,
-                              ColumnFilter columnFilter,
-                              long nowInSec,
-                              DataLimits limit)
+    public ReadQuery getQuery(@SpanAttribute("options") QueryOptions options,
+                              @SpanAttribute("state") ClientState state,
+                              @SpanAttribute("columnFilter") ColumnFilter columnFilter,
+                              @SpanAttribute("nowInSec") long nowInSec,
+                              @SpanAttribute("limit") DataLimits limit)
     {
         boolean isPartitionRangeQuery = restrictions.isKeyRange() || restrictions.usesSecondaryIndexing();
 
@@ -813,10 +814,15 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         // We want to have getRangeSlice to count the number of columns, not the number of keys.
         AbstractBounds<PartitionPosition> keyBounds = restrictions.getPartitionKeyBounds(options);
         if (keyBounds == null)
+        {
+            Span.current().setAttribute("keyBounds", "null");
             return ReadQuery.empty(table);
+        }
+        final DataRange dataRange = new DataRange(keyBounds, clusteringIndexFilter);
+        Span.current().setAttribute("dataRange", dataRange.toString(this.table));
 
         ReadQuery command =
-            PartitionRangeReadQuery.create(table, nowInSec, columnFilter, rowFilter, limit, new DataRange(keyBounds, clusteringIndexFilter));
+            PartitionRangeReadQuery.create(table, nowInSec, columnFilter, rowFilter, limit, dataRange);
 
         // If there's a secondary index that the command can use, have it validate the request parameters.
         command.maybeValidateIndex();
@@ -824,8 +830,10 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         return command;
     }
 
+    @WithSpan
     private ClusteringIndexFilter makeClusteringIndexFilter(QueryOptions options, ClientState state, ColumnFilter columnFilter)
     {
+        final Span span = Span.current();
         if (parameters.isDistinct)
         {
             // We need to be able to distinguish between partition having live rows and those that don't. But
@@ -835,15 +843,19 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
             // so that it's hard to really optimize properly internally. So to keep it simple, we simply query
             // for the first row of the partition and hence uses Slices.ALL. We'll limit it to the first live
             // row however in getLimit().
+            span.setAttribute("filterType", "ClusteringIndexSliceFilter (distinct)");
             return new ClusteringIndexSliceFilter(Slices.ALL, false);
         }
-
+        span.setAttribute("isColumnRange", restrictions.isColumnRange());
         if (restrictions.isColumnRange())
         {
             Slices slices = makeSlices(options);
             if (slices == Slices.NONE && !selection.containsStaticColumns())
+            {
+                span.setAttribute("filterType", "null (no slices, no statis columns)");
                 return null;
-
+            }
+            span.setAttribute("filterType", "ClusteringIndexSiceFilter");
             return new ClusteringIndexSliceFilter(slices, isReversed);
         }
 
@@ -852,8 +864,11 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         // a 'IN ()' for clusterings. In that case, we still want to query if some static columns are
         // queried. But we're fine otherwise.
         if (clusterings.isEmpty() && columnFilter.fetchedColumns().statics.isEmpty())
+        {
+            span.setAttribute("filterType", "null (no clusterings, no statics)");
             return null;
-
+        }
+        span.setAttribute("filterType", "ClusteringIndexNamesFilter");
         return new ClusteringIndexNamesFilter(clusterings, isReversed);
     }
 
