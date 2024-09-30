@@ -394,6 +394,7 @@ public class PartitionRangeReadCommand extends ReadCommand implements PartitionR
             if (inputCollector.isEmpty())
                 return EmptyIterators.unfilteredPartition(metadata());
 
+            // Finalised list of SSTables and Memtables to read from
             List<UnfilteredPartitionIterator> finalizedIterators = inputCollector.finalizeIterators(cfs, nowInSec(), controller.oldestUnrepairedTombstone());
             UnfilteredPartitionIterator merged = UnfilteredPartitionIterators.mergeLazily(finalizedIterators);
             return checkCacheFilter(Transformation.apply(merged, new Transformation<UnfilteredRowIterator>()

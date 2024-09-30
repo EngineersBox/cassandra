@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.rows.*;
@@ -43,6 +44,7 @@ public abstract class ReadResponse
     {
     }
 
+    @WithSpan
     public static ReadResponse createDataResponse(UnfilteredPartitionIterator data, ReadCommand command, RepairedDataInfo rdi)
     {
         return new LocalDataResponse(data, command, rdi);
@@ -181,6 +183,7 @@ public abstract class ReadResponse
     // built on the owning node responding to a query
     private static class LocalDataResponse extends DataResponse
     {
+        @WithSpan
         private LocalDataResponse(UnfilteredPartitionIterator iter, ReadCommand command, RepairedDataInfo rdi)
         {
             super(build(iter, command.columnFilter()),
@@ -194,6 +197,7 @@ public abstract class ReadResponse
             super(build(iter, selection), null, false, MessagingService.current_version, DeserializationHelper.Flag.LOCAL);
         }
 
+        @WithSpan
         private static ByteBuffer build(UnfilteredPartitionIterator iter, ColumnFilter selection)
         {
             try (DataOutputBuffer buffer = new DataOutputBuffer())

@@ -24,6 +24,7 @@ import java.nio.BufferOverflowException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.DeletionTime;
 import org.apache.cassandra.db.EmptyIterators;
@@ -81,13 +82,14 @@ public class UnfilteredRowIteratorSerializer
     public static final UnfilteredRowIteratorSerializer serializer = new UnfilteredRowIteratorSerializer();
 
     // Should only be used for the on-wire format.
+    @WithSpan
     public void serialize(UnfilteredRowIterator iterator, ColumnFilter selection, DataOutputPlus out, int version) throws IOException
     {
         serialize(iterator, selection, out, version, -1);
     }
 
     // Should only be used for the on-wire format.
-
+    @WithSpan
     public void serialize(UnfilteredRowIterator iterator, ColumnFilter selection, DataOutputPlus out, int version, int rowEstimate) throws IOException
     {
 
@@ -107,6 +109,7 @@ public class UnfilteredRowIteratorSerializer
     }
 
     // Should only be used for the on-wire format.
+    @WithSpan
     private void serialize(UnfilteredRowIterator iterator, SerializationHeader header, ColumnFilter selection, DataOutputPlus out, int version, int rowEstimate) throws IOException
     {
         assert !header.isForSSTable();

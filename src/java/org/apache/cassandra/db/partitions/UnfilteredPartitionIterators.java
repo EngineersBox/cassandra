@@ -333,6 +333,7 @@ public abstract class UnfilteredPartitionIterators
      */
     public static class Serializer
     {
+        @WithSpan
         public void serialize(UnfilteredPartitionIterator iter, ColumnFilter selection, DataOutputPlus out, int version) throws IOException
         {
             // Previously, a boolean indicating if this was for a thrift query.
