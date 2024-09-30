@@ -219,7 +219,7 @@ public class RangeCommandIterator extends AbstractIterator<RowIterator> implemen
 
         if (replicaPlan.contacts().size() == 1 && replicaPlan.contacts().get(0).isSelf())
         {
-            Stage.READ.execute(new StorageProxy.LocalReadRunnable(rangeCommand, handler, requestTime, trackRepairedStatus));
+            Stage.READ.execute(new StorageProxy.LocalReadRunnable(Span.current(), rangeCommand, handler, requestTime, trackRepairedStatus));
         }
         else
         {

@@ -17,6 +17,7 @@
  */
 package org.apache.cassandra.db;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.filter.ColumnFilter;
 import org.apache.cassandra.db.filter.DataLimits;
@@ -60,6 +61,7 @@ abstract class AbstractReadQuery extends MonitorableImpl implements ReadQuery
     }
 
     @Override
+    @WithSpan
     public PartitionIterator executeInternal(ReadExecutionController controller)
     {
         return UnfilteredPartitionIterators.filter(executeLocally(controller), nowInSec());

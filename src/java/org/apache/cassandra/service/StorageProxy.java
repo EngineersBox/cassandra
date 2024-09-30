@@ -50,6 +50,7 @@ import org.slf4j.LoggerFactory;
 
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
@@ -2190,30 +2191,40 @@ public class StorageProxy implements StorageProxyMBean
         private final ReadCallback handler;
         private final boolean trackRepairedStatus;
         private final Context context;
+        private final Span span;
         private final Tracer tracer;
 
         public LocalReadRunnable(ReadCommand command, ReadCallback handler, Dispatcher.RequestTime requestTime)
         {
-            this(command, handler, requestTime, false);
+            this(null, command, handler, requestTime, false);
+        }
+
+        public LocalReadRunnable(ReadCommand command, ReadCallback handler, Dispatcher.RequestTime requestTime, boolean trackRepairedStatus) {
+            this(null, command, handler, requestTime, trackRepairedStatus);
         }
 
         @WithSpan
-        public LocalReadRunnable(ReadCommand command, ReadCallback handler, Dispatcher.RequestTime requestTime, boolean trackRepairedStatus)
+        public LocalReadRunnable(Span span, ReadCommand command, ReadCallback handler, Dispatcher.RequestTime requestTime, boolean trackRepairedStatus)
         {
             super(Verb.READ_REQ, requestTime);
             this.command = command;
             this.handler = handler;
             this.trackRepairedStatus = trackRepairedStatus;
             this.context = Context.current();
+            this.span = span;
             this.tracer = GlobalOpenTelemetry.getTracerProvider().get("LocalReadRunnable");
         }
 
         @WithSpan
         protected void runMayThrow()
         {
-            final Span span = this.tracer.spanBuilder("LocalReadRunnable::runMayThrow")
-                              .setParent(this.context)
-                              .startSpan();
+            final SpanBuilder spanBuilder = this.tracer.spanBuilder("LocalReadRunnable::runMayThrow");
+            if (this.span != null) {
+                spanBuilder.setParent(this.context.with(this.span));
+            } else {
+                spanBuilder.setParent(this.context);
+            }
+            final Span span = spanBuilder.startSpan();
             try (final Scope ignored = span.makeCurrent())
             {
                 MessageParams.reset();

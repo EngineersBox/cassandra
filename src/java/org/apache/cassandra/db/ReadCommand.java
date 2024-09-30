@@ -416,7 +416,7 @@ public abstract class ReadCommand extends AbstractReadQuery
         {
             ColumnFamilyStore cfs = Keyspace.openAndGetStore(metadata());
             Index.QueryPlan indexQueryPlan = indexQueryPlan();
-
+            Span.current().addEvent("Has index query plan: " + (indexQueryPlan != null));
             Index.Searcher searcher = null;
             if (indexQueryPlan != null)
             {
