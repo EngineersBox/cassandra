@@ -151,30 +151,30 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                     return;
                 }
 
-                if (isSpinning() && !selfAssign())
-                {
-                    doWaitSpin();
-                    // if the pool is terminating, but we have been assigned STOP_SIGNALLED, if we do not re-check
-                    // whether the pool is shutting down this thread will go to sleep and block forever
-                    scope.close();;
-                    span.end();
-                    continue;
-                }
+//                if (isSpinning() && !selfAssign())
+//                {
+//                    doWaitSpin();
+//                    // if the pool is terminating, but we have been assigned STOP_SIGNALLED, if we do not re-check
+//                    // whether the pool is shutting down this thread will go to sleep and block forever
+//                    scope.close();;
+//                    span.end();
+//                    continue;
+//                }
 
                 // if stop was signalled, go to sleep (don't try self-assign; being put to sleep is rare, so let's obey it
                 // whenever we receive it - though we don't apply this constraint to producers, who may reschedule us before
                 // we go to sleep)
-                if (stop())
-                {
-                    while (isStopped())
-                    {
-                        this.parkStart = Clock.Global.nanoTime();
-                        this.parkSpan = this.tracer.spanBuilder("LockSupport.park")
-                                              .setParent(Context.current().with(span))
-                                              .startSpan();
-                        LockSupport.park();
-                    }
-                }
+//                if (stop())
+//                {
+//                    while (isStopped())
+//                    {
+//                        this.parkStart = Clock.Global.nanoTime();
+//                        this.parkSpan = this.tracer.spanBuilder("LockSupport.park")
+//                                              .setParent(Context.current().with(span))
+//                                              .startSpan();
+//                        LockSupport.park();
+//                    }
+//                }
 
                 // we can be assigned any state from STOPPED, so loop if we don't actually have any tasks assigned
                 assigned = get().assigned;
@@ -284,7 +284,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 // try to immediately reassign ourselves some work; if we fail, start spinning
                 if (!selfAssign())
                 {
-                    startSpinning();
+//                    startSpinning();
                 }
                 scope.close();
                 span.end();
