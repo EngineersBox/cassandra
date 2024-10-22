@@ -151,15 +151,14 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                     return;
                 }
 
-//                if (isSpinning() && !selfAssign())
-//                {
+                if (/*isSpinning() &&*/ !selfAssign()) {
 //                    doWaitSpin();
-//                    // if the pool is terminating, but we have been assigned STOP_SIGNALLED, if we do not re-check
-//                    // whether the pool is shutting down this thread will go to sleep and block forever
-//                    scope.close();;
-//                    span.end();
-//                    continue;
-//                }
+                    // if the pool is terminating, but we have been assigned STOP_SIGNALLED, if we do not re-check
+                    // whether the pool is shutting down this thread will go to sleep and block forever
+                    scope.close();;
+                    span.end();
+                    continue;
+                }
 
                 // if stop was signalled, go to sleep (don't try self-assign; being put to sleep is rare, so let's obey it
                 // whenever we receive it - though we don't apply this constraint to producers, who may reschedule us before
