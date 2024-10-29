@@ -151,8 +151,8 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                     return;
                 }
 
-                if (/*isSpinning() &&*/ !selfAssign()) {
-//                    doWaitSpin();
+                if (isSpinning() && !selfAssign()) {
+                    doWaitSpin();
                     // if the pool is terminating, but we have been assigned STOP_SIGNALLED, if we do not re-check
                     // whether the pool is shutting down this thread will go to sleep and block forever
                     scope.close();;
@@ -208,7 +208,6 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                         // before we process any task, we maybe schedule a new worker _to our executor only_; this
                         // ensures that even once all spinning threads have found work, if more work is left to be serviced
                         // and permits are available, it will be dealt with immediately.
-//                    logger.info("[{}] maybeSchedule() {}", workerId, Clock.Global.nanoTime() - _start);
                         innerSpan.addEvent("Attempting to schedule threads to assigned SEPExecutor");
                         assigned.maybeSchedule();
 
@@ -281,10 +280,10 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 
 
                 // try to immediately reassign ourselves some work; if we fail, start spinning
-                if (!selfAssign())
-                {
+//                if (!selfAssign())
+//                {
 //                    startSpinning();
-                }
+//                }
                 scope.close();
                 span.end();
             }
@@ -494,8 +493,8 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
 
         // place ourselves in the spinning collection; if we clash with another thread just exit
         Long target = start + sleep;
-        if (pool.spinning.putIfAbsent(target, this) != null)
-            LockSupport.parkNanos(sleep);
+        /*if (*/pool.spinning.putIfAbsent(target, this);/* != null)*/
+//            LockSupport.parkNanos(sleep);
 
         // remove ourselves (if haven't been already) - we should be at or near the front, so should be cheap-ish
         pool.spinning.remove(target, this);
@@ -504,7 +503,7 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
         long end = nanoTime();
         long spin = end - start;
         long stopCheck = pool.stopCheck.addAndGet(spin);
-        maybeStop(stopCheck, end);
+//        maybeStop(stopCheck, end);
         if (prevStopCheck + spin == stopCheck)
             soleSpinnerSpinTime += spin;
         else
