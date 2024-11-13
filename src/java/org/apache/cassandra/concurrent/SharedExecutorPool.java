@@ -119,7 +119,7 @@ public class SharedExecutorPool
         // we atomically set the task so even if this were a collection of all workers it would be safe, and if they are both
         // empty we schedule a new thread
         Map.Entry<Long, SEPWorker> e;
-        while (null != (e = spinning.pollFirstEntry()) || null != (e = descheduled.pollFirstEntry()))
+        while (null != (e = descheduled.pollFirstEntry()) || null != (e = spinning.pollFirstEntry()))
         {
 //            logger.info(
 //                "[SEP] Attemping to schedule work to {} sleep time {} {}",
