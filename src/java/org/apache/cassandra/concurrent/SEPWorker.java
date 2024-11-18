@@ -141,20 +141,20 @@ public final class SEPWorker extends AtomicReference<SEPWorker.Work> implements 
                 // if stop was signalled, go to sleep (don't try self-assign; being put to sleep is rare, so let's obey it
                 // whenever we receive it - though we don't apply this constraint to producers, who may reschedule us before
                 // we go to sleep)
-//                if (stop())
-//                {
-////                    logger.info(
-////                        "[{}] Stop signalled, park worker until not-stopped {}",
-////                        workerId,
-////                        Clock.Global.nanoTime() - _start
-////                    );
-//                    while (isStopped())
-//                    {
-//                        parkStart = Clock.Global.nanoTime();
-//                        LockSupport.park();
-//                    }
-////                    logger.info("[{}] Finished top parking {}", workerId, Clock.Global.nanoTime() - _start);
-//                }
+                if (stop())
+                {
+//                    logger.info(
+//                        "[{}] Stop signalled, park worker until not-stopped {}",
+//                        workerId,
+//                        Clock.Global.nanoTime() - _start
+//                    );
+                    while (isStopped())
+                    {
+                        parkStart = Clock.Global.nanoTime();
+                        LockSupport.park();
+                    }
+//                    logger.info("[{}] Finished top parking {}", workerId, Clock.Global.nanoTime() - _start);
+                }
 
                 // we can be assigned any state from STOPPED, so loop if we don't actually have any tasks assigned
                 assigned = get().assigned;
